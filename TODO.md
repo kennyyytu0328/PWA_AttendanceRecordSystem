@@ -1,0 +1,341 @@
+# TODO — GoGoFresh Attendance System (TDD Implementation)
+
+## Phase 0: Project Scaffolding & Test Infrastructure -- DONE
+
+- [x] Create `backend/` with `pyproject.toml` (webauthn, passlib[bcrypt], python-jose, etc.)
+- [x] Create `backend/app/config.py` (pydantic-settings BaseSettings from .env)
+- [x] Create `backend/app/database.py` (async engine, session maker, get_db dependency)
+- [x] Create `backend/tests/conftest.py` (in-memory SQLite fixture, TestClient fixture)
+- [x] Create `frontend/` via create-next-app (Next.js 16, TypeScript, Tailwind, App Router)
+- [x] Configure `vitest.config.ts` (jsdom) + `playwright.config.ts`
+- [x] Create `docker-compose.yml` (PostgreSQL 16, backend, frontend)
+- [x] Verify pytest (1 passed) and vitest (1 passed) both green
+
+## Phase 1: Database Models & Core Utilities -- DONE (31 tests)
+
+### 1A: Haversine Distance Calculator -- DONE (8 tests)
+- [x] `backend/app/utils/haversine.py` — Pure function with `EARTH_RADIUS_KM`, `_validate_range()`, `Final` constants
+- [x] `backend/tests/unit/test_haversine.py` — 8 tests (zero dist, known dist, antipodal, negative coords, boundary in/out, invalid lat/lon)
+
+### 1B: Password Hashing Utility -- DONE (5 tests)
+- [x] `backend/app/utils/password.py` — `hash_password()`, `verify_password()` using passlib bcrypt
+- [x] `backend/tests/unit/test_password.py` — 5 tests
+
+### 1C: SQLAlchemy/SQLModel Database Models -- DONE (10 tests)
+- [x] 5 model files: employee.py (Role enum), authenticator.py, attendance_log.py (WorkMode enum), system_config.py, daily_attendance_summary.py (AttendanceStatus enum)
+- [x] Indexes on attendance_logs.timestamp + emp_id, unique constraint on (emp_id, date)
+- [x] `backend/tests/unit/test_models.py` — 10 tests
+
+### 1D: Pydantic Schemas -- DONE (7 tests + 1 smoke)
+- [x] 4 schema files: employee.py, attendance.py, auth.py, system_config.py
+- [x] Field validators: min_length, ge/le on lat/lon/accuracy, ConfigDict(from_attributes=True)
+- [x] `backend/tests/unit/test_schemas.py` — 7 tests
+
+## Phase 2: Repository Layer (Data Access) -- DONE (33 tests)
+
+### 2A: Employee Repository -- DONE (11 tests)
+- [x] `backend/app/repositories/employee_repository.py` — 8 async functions (CRUD + pagination + department/role filter)
+- [x] `backend/tests/unit/test_employee_repository.py` — 11 tests (incl. pagination test)
+
+### 2B: Authenticator Repository -- DONE (5 tests)
+- [x] `backend/app/repositories/authenticator_repository.py` — CRUD + sign_count update
+- [x] `backend/tests/unit/test_authenticator_repository.py` — 5 tests
+
+### 2C: Attendance Log Repository -- DONE (7 tests)
+- [x] `backend/app/repositories/attendance_repository.py` — Append-only, NO update/delete (immutability)
+- [x] `backend/tests/unit/test_attendance_repository.py` — 7 tests (incl. immutability assertion)
+
+### 2D: System Config Repository -- DONE (5 tests)
+- [x] `backend/app/repositories/system_config_repository.py` — get_by_key, get_office_location, set_config (upsert)
+- [x] Uses `datetime.datetime.now(datetime.UTC)` (not deprecated utcnow)
+- [x] `backend/tests/unit/test_system_config_repository.py` — 5 tests
+
+### 2E: Summary Repository -- DONE (5 tests)
+- [x] `backend/app/repositories/summary_repository.py` — CRUD + upsert + filter by employee/date/status
+- [x] `backend/tests/unit/test_summary_repository.py` — 5 tests
+
+## Phase 3: Service Layer (Business Logic) -- DONE (64 tests)
+
+### 3A: Permission Service -- DONE (13 tests)
+- [x] `backend/app/services/permission_service.py` — Declarative frozenset permission matrix, 10 action constants, role hierarchy
+- [x] `backend/tests/unit/test_permission_service.py` — 13 tests
+
+### 3B: Employee Service -- DONE (10 tests)
+- [x] `backend/app/services/employee_service.py` — CRUD + JWT auth (python-jose), no user enumeration, role-based list filtering
+- [x] `backend/tests/unit/test_employee_service.py` — 10 tests
+
+### 3C: WebAuthn Service -- DONE (10 tests)
+- [x] `backend/app/services/webauthn_service.py` — Register/authenticate, challenge storage in `_challenges` dict, clone detection via sign_count
+- [x] `backend/tests/unit/test_webauthn_service.py` — 10 tests (all mock webauthn library)
+
+### 3D: Geolocation Service -- DONE (8 tests)
+- [x] `backend/app/services/geolocation_service.py` — `WorkModeResult` frozen dataclass, reads office from system_config, 100m threshold, low accuracy flag
+- [x] `backend/tests/unit/test_geolocation_service.py` — 8 tests (incl. boundary 99m/100m)
+
+### 3E: Attendance Service -- DONE (10 tests)
+- [x] `backend/app/services/attendance_service.py` — `PunchResult` frozen dataclass, punch orchestration, manager override, mocks geolocation service
+- [x] `backend/tests/unit/test_attendance_service.py` — 10 tests
+
+### 3F: Reporting Service -- DONE (13 tests)
+- [x] `backend/app/services/reporting_service.py` — `calculate_status()` pure function, 5min grace, LATE precedence, CSV/JSON export
+- [x] `backend/tests/unit/test_reporting_service.py` — 13 tests (uses freezegun)
+
+## Phase 4: API Layer (Routers) -- DONE (60 tests)
+
+### 4F: Auth Middleware -- DONE (12 tests)
+- [x] `backend/app/middleware/auth_middleware.py` — `get_current_user` (JWT decode), `require_role(minimum_role)` (hierarchy-based)
+- [x] `backend/tests/unit/test_auth_middleware.py` — 12 tests (valid token, missing header, invalid scheme, expired, bad signature, malformed, role access/deny)
+
+### 4A: Authentication Router -- DONE (9 tests)
+- [x] `backend/app/routers/auth.py` — login, /me, WebAuthn register/authenticate options+verify
+- [x] `backend/tests/integration/test_auth_api.py` — 9 tests (login success/fail/missing, token flow, WebAuthn mocked)
+
+### 4B: Employee Router -- DONE (11 tests)
+- [x] `backend/app/routers/employees.py` — CRUD + role-based permissions
+- [x] `backend/tests/integration/test_employee_api.py` — 11 tests (create HR/forbidden, get/404, list, update, self-update, role change denied, delete ADMIN, unauth)
+
+### 4C: Attendance Router -- DONE (10 tests)
+- [x] `backend/app/routers/attendance.py` — punch, today, history, team, all, override
+- [x] `backend/tests/integration/test_attendance_api.py` — 10 tests (punch success/unauth/invalid, today, history, team/forbidden, all/forbidden, override)
+- [x] Added `get_history`, `get_team_logs`, `get_all_logs` to attendance_service.py
+
+### 4D: Reports Router -- DONE (10 tests)
+- [x] `backend/app/routers/reports.py` — daily report, CSV/JSON export, generate summaries
+- [x] `backend/tests/integration/test_reports_api.py` — 10 tests (daily/forbidden/missing, CSV/JSON export, export forbidden, generate ADMIN/forbidden)
+- [x] Added `get_daily_report` to reporting_service.py
+
+### 4E: System Config Router -- DONE (9 tests)
+- [x] `backend/app/routers/system_config.py` — office-location get/set, config CRUD
+- [x] `backend/tests/integration/test_system_config_api.py` — 9 tests (office location CRUD, config CRUD, role enforcement, unauth)
+
+## Phase 5: Frontend Core Infrastructure -- DONE (27 tests)
+
+### 5A: TypeScript Types & API Client -- DONE (9 tests)
+- [x] `frontend/src/types/index.ts` — All shared types (Employee, Role, AttendanceLog, PunchRequest, etc.)
+- [x] `frontend/src/lib/api.ts` — Typed API client with JWT auth interceptor, ApiError class
+- [x] `frontend/src/lib/validators.ts` — Zod schemas (loginRequest, punchRequest, employeeCreate, officeLocation)
+- [x] `frontend/__tests__/unit/lib/api.test.ts` — 9 tests (GET/POST/PUT/DELETE, auth header, ApiError, Zod validation)
+
+### 5B: Geolocation Hook -- DONE (6 tests)
+- [x] `frontend/src/hooks/useGeolocation.ts` — useGeolocation hook with high accuracy, error handling
+- [x] `frontend/__tests__/unit/hooks/useGeolocation.test.ts` — 6 tests (initial state, loading, success, error, permission denied, not supported)
+
+### 5C: WebAuthn Hook -- DONE (6 tests)
+- [x] `frontend/src/hooks/useWebAuthn.ts` — useWebAuthn hook with register/authenticate flows
+- [x] `frontend/__tests__/unit/hooks/useWebAuthn.test.ts` — 6 tests (supported/unsupported, register flow, auth flow, error handling)
+
+### 5D: Auth Context & Login Page -- DONE (6 tests)
+- [x] `frontend/src/lib/auth-context.tsx` — AuthProvider with JWT decode, login/logout, localStorage persistence
+- [x] `frontend/src/app/login/page.tsx` — Login form with Zod validation, error display, redirect on success
+- [x] `frontend/__tests__/unit/app/login.test.tsx` — 6 tests (null user, restore token, login, logout, form render, error display)
+
+## Phase 6: Frontend Feature Pages -- DONE (33 tests)
+
+### 6A: Punch Page -- DONE (8 tests)
+- [x] `frontend/src/app/punch/page.tsx` — Large punch button, GPS request, result display, low accuracy warning, Framer Motion animations
+- [x] `frontend/__tests__/unit/app/punch.test.tsx` — 8 tests (render, loading, result, geolocation error, API error, auth redirect, accuracy warning, disabled)
+
+### 6B: Dashboard Page -- DONE (6 tests)
+- [x] `frontend/src/app/dashboard/page.tsx` — Welcome message, today's stats, role-based nav links, loading skeleton
+- [x] `frontend/__tests__/unit/app/dashboard.test.tsx` — 6 tests (welcome, attendance data, loading, nav links, manager links, employee restrictions)
+
+### 6C: Attendance History Page -- DONE (7 tests)
+- [x] `frontend/src/app/attendance/page.tsx` — Table with date filters, work mode badges, override indicators, empty state
+- [x] `frontend/__tests__/unit/app/attendance.test.tsx` — 7 tests (heading, loading, records, badges, empty state, override, date filters)
+
+### 6D: Admin Panel -- DONE (7 tests)
+- [x] `frontend/src/app/admin/page.tsx` — Employee management, office location, system config sections with role-based visibility
+- [x] `frontend/__tests__/unit/app/admin.test.tsx` — 7 tests (heading, HR sections, ADMIN config, access denied, employee list, location form)
+
+### 6E: PWA Configuration -- DONE (5 tests)
+- [x] `frontend/public/manifest.json` — Web App Manifest with icons, standalone display
+- [x] `frontend/src/lib/pwa.ts` — isPWAInstalled, canInstallPWA, registerServiceWorker utilities
+- [x] Updated `frontend/src/app/layout.tsx` — manifest link, theme color, updated title/description
+- [x] `frontend/__tests__/unit/pwa.test.ts` — 5 tests (manifest fields, standalone detection, service worker, install prompt)
+
+## Phase 7: End-to-End Tests -- DONE (5 backend + 33 frontend stubs)
+
+### 7A: Backend E2E -- DONE (5 tests)
+- [x] `backend/tests/e2e/test_punch_workflow.py` — 5 full workflow tests:
+  - Full onboarding flow (ADMIN → HR → EMPLOYEE creation chain)
+  - Full punch flow (set office location → punch with GPS → verify logs)
+  - Full reporting flow (seed data → generate summaries → export CSV/JSON)
+  - Role-based access flow (EMPLOYEE/MANAGER/HR/ADMIN permission boundaries)
+  - Office location change flow (set → verify → update → verify)
+
+### 7B: Frontend E2E (Playwright) -- DONE (33 test stubs)
+- [x] `frontend/__tests__/e2e/login-and-punch.spec.ts` — 6 test stubs
+- [x] `frontend/__tests__/e2e/attendance-history.spec.ts` — 6 test stubs
+- [x] `frontend/__tests__/e2e/admin-employees.spec.ts` — 7 test stubs
+- [x] `frontend/__tests__/e2e/office-location.spec.ts` — 7 test stubs
+- [x] `frontend/__tests__/e2e/pwa.spec.ts` — 7 test stubs
+- All use `test.fixme()` markers — ready to run when full stack is deployed
+
+## Phase 8: Security Hardening & Final Polish -- DONE (31 tests)
+
+- [x] SQL injection prevention tests (3 tests)
+- [x] XSS prevention / input sanitization tests (4 tests)
+- [x] Rate limiting on login — 5 attempts/min, 429 after (3 tests)
+- [x] CORS configuration — configurable origins via settings (4 tests)
+- [x] Secure headers — X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, HSTS, CSP (6 tests)
+- [x] No user enumeration — same error for wrong password / non-existent user (3 tests)
+- [x] JWT expiry validation (3 tests)
+- [x] Password hashing — bcrypt, never plaintext (5 tests)
+- [x] Code audit: no print statements, no hardcoded secrets, all endpoints auth-guarded
+- [x] `backend/app/middleware/rate_limiter.py` — in-memory rate limiter
+- [x] `backend/app/config.py` — added cors_origins setting
+- [x] `backend/app/main.py` — CORS middleware + secure headers middleware
+- [x] `backend/tests/unit/test_security.py` — 31 security tests
+
+## Phase 9: Bug Fixes & Enhancements
+
+### 9A: WorkMode Enum Mismatch Fix -- DONE
+- [x] **Bug**: Frontend used `"WFO"` for office work mode, but backend enum uses `"OFFICE"` — caused team/attendance/punch pages to always display WFH badge
+- [x] `frontend/src/types/index.ts` — Changed `WorkMode` type from `"WFO" | "WFH"` to `"OFFICE" | "WFH"`
+- [x] `frontend/src/app/team/page.tsx` — Updated `WorkModeBadge` to check `"OFFICE"` instead of `"WFO"`
+- [x] `frontend/src/app/attendance/page.tsx` — Updated `WorkModeBadge` to check `"OFFICE"` instead of `"WFO"`
+- [x] `frontend/src/app/punch/page.tsx` — Updated punch result display to check `"OFFICE"` instead of `"WFO"`
+
+### 9B: Date Range Query Support -- DONE
+- [x] `backend/app/services/attendance_service.py` — Refactored `get_team_logs`, `get_all_logs`, `get_history` to accept `start_date`/`end_date` instead of single `date`
+- [x] `backend/app/routers/attendance.py` — Updated endpoints to require `start_date`/`end_date` query params
+- [x] `backend/app/services/reporting_service.py` — Refactored to generate multi-day attendance summaries
+- [x] `backend/app/routers/reports.py` — Updated daily report endpoint to support date range queries
+- [x] `frontend/src/app/team/page.tsx` — Added date range picker UI, updated API calls for date range
+- [x] `frontend/src/app/reports/page.tsx` — Added date range picker to DailyReportSection
+- [x] `frontend/src/messages/en.json` / `zh.json` — Added i18n keys for date range picker
+- [x] Updated all backend integration and e2e tests to use date range parameters
+- [x] Fixed date display in Team page Time column after date range implementation
+
+### 9C: WebAuthn Fingerprint Authentication (Frontend) -- DONE
+- [x] `frontend/src/app/login/page.tsx` — Added fingerprint login button using `useWebAuthn` hook
+- [x] `frontend/src/lib/auth-context.tsx` — Added `loginWithToken` method to AuthContext for token-based login
+- [x] `frontend/src/hooks/useWebAuthn.ts` — Refactored `authenticate` to return token instead of storing directly; fixed hydration error with client-side effect
+- [x] `frontend/src/app/dashboard/page.tsx` — Added fingerprint registration/removal section with credential management UI
+- [x] `backend/app/repositories/authenticator_repository.py` — Added `delete_by_employee_id` for bulk credential deletion
+- [x] `backend/app/routers/auth.py` — Added WebAuthn credential list/delete management endpoints
+- [x] `backend/app/services/webauthn_service.py` — Fixed credential ID encoding mismatch (base64url consistency)
+- [x] `frontend/src/messages/en.json` / `zh.json` — Added i18n keys for fingerprint login, registration, and removal
+- [x] Verified fingerprint registration and authentication working end-to-end with Windows Hello
+
+### 9D: Back to Dashboard Navigation -- DONE
+- [x] `frontend/src/components/BackButton.tsx` — Reusable `ArrowLeft` + "Dashboard" link component
+- [x] Added `BackButton` to all 5 sub-pages: punch (absolute top-left), attendance, team, reports, admin (above page header)
+- [x] `frontend/src/messages/en.json` / `zh.json` — Added `common.backToDashboard` i18n key
+
+## Phase 10: Meeting Requirements — Tardiness, Reasons, Export Enhancements -- DONE
+
+### 10A: Configurable Grace Period -- DONE
+- [x] `backend/app/repositories/system_config_repository.py` — Added `get_grace_period()` helper (reads from `system_config` table, defaults to 5 min)
+- [x] `backend/app/services/reporting_service.py` — `calculate_status()` now takes `grace_minutes` param; `generate_daily_summary()` reads grace period from DB
+- [x] `backend/app/routers/system_config.py` — Added `GET/PUT /api/config/grace-period` endpoints (HR+ can update, any auth user can read)
+- [x] `frontend/src/app/admin/page.tsx` — Added `GracePeriodSection` component (number input 0-60 min, visible to HR+)
+- [x] `frontend/src/messages/en.json` / `zh.json` — Added i18n keys for grace period UI
+
+### 10B: Tardiness Alert on Punch Page -- DONE
+- [x] `backend/app/services/attendance_service.py` — Added `_check_tardiness()` helper; `PunchResult` now includes `tardiness_status` and `summary_id`
+- [x] `backend/app/schemas/attendance.py` — Added `tardiness_status` and `summary_id` to `PunchResponse`
+- [x] `backend/app/routers/attendance.py` — Passes tardiness fields through to response
+- [x] `frontend/src/types/index.ts` — Added `tardiness_status` and `summary_id` to `PunchResponse` type
+- [x] `frontend/src/app/punch/page.tsx` — Shows red alert (LATE) or amber alert (EARLY_LEAVE) after punch
+- [x] `frontend/src/messages/en.json` / `zh.json` — Added `punch.lateAlert`, `punch.earlyLeaveAlert` i18n keys
+
+### 10C: Employee Late/Early-Leave Reason Entry -- DONE
+- [x] `backend/app/models/attendance_reason.py` — New `AttendanceReason` model (id, summary_id, emp_id, reason, created_at)
+- [x] `backend/app/models/__init__.py` — Registered `AttendanceReason` model
+- [x] `backend/alembic/versions/a1b2c3d4e5f6_add_attendance_reasons.py` — Migration for `attendance_reasons` table
+- [x] `backend/app/schemas/attendance_reason.py` — `ReasonSubmitRequest` and `ReasonResponse` schemas
+- [x] `backend/app/repositories/reason_repository.py` — `create_reason`, `find_by_summary_id`, `find_by_employee`
+- [x] `backend/app/repositories/summary_repository.py` — Added `find_by_id()` method
+- [x] `backend/app/services/reason_service.py` — `submit_reason` (validates ownership, status, uniqueness), `get_reasons_for_employee`, `get_reason_for_summary`
+- [x] `backend/app/routers/reasons.py` — `POST /api/reasons`, `GET /api/reasons/me`, `GET /api/reasons?emp_id=...` (MANAGER+)
+- [x] `backend/app/main.py` — Registered reasons router
+- [x] `backend/app/services/attendance_service.py` — Auto-generates daily summary when tardy punch detected (provides `summary_id` for immediate reason submission)
+- [x] `frontend/src/app/punch/page.tsx` — Reason textarea + submit button appears when LATE/EARLY_LEAVE; success confirmation after submission
+- [x] `frontend/src/messages/en.json` / `zh.json` — Added reason form i18n keys
+
+### 10D: Individual Employee Export -- DONE
+- [x] `backend/app/services/reporting_service.py` — `export_attendance()` and `get_daily_report()` accept optional `emp_id` filter
+- [x] `backend/app/routers/reports.py` — Added `emp_id` query param to `/api/reports/daily` and `/api/reports/export`
+- [x] `frontend/src/app/reports/page.tsx` — Added employee selector dropdown to both `DailyReportSection` and `ExportSection`
+- [x] `frontend/src/messages/en.json` / `zh.json` — Added `reports.employee`, `reports.employeePlaceholder` i18n keys
+
+### 10E: Excel (.xlsx) Export -- DONE
+- [x] `backend/pyproject.toml` — Added `openpyxl>=3.1.0` dependency
+- [x] `backend/app/services/reporting_service.py` — `export_attendance()` supports `format="xlsx"` with bold headers, auto-filter, auto-sized columns
+- [x] `backend/app/routers/reports.py` — Returns xlsx as binary response with proper Content-Type and Content-Disposition
+- [x] `frontend/src/app/reports/page.tsx` — Added "Excel" option to format dropdown; blob download for xlsx
+
+### 10F: Geolocation Test Fix -- DONE
+- [x] `backend/tests/unit/test_geolocation_service.py` — Updated tests from 100m threshold to 2km threshold (added `_OFFSET_2KM`, `_OFFSET_3KM` offsets; fixed assertions)
+
+## Phase 11: Bug Fixes & Admin Enhancements -- DONE
+
+### 11A: Department Management -- DONE
+- [x] `backend/app/repositories/system_config_repository.py` — Added `get_departments()` helper
+- [x] `backend/app/routers/system_config.py` — Added `GET/PUT /api/config/departments` endpoints (HR+ can update, any auth user can read)
+- [x] `frontend/src/app/admin/page.tsx` — Added `DepartmentManagementSection` (tag-based UI with add/remove)
+- [x] `frontend/src/app/admin/page.tsx` — Changed department field from free-text `<input>` to `<select>` dropdown in both create and edit employee forms
+- [x] `frontend/src/messages/en.json` / `zh.json` — Added i18n keys for department management
+
+### 11B: Office Location Display Fix -- DONE
+- [x] `frontend/src/app/admin/page.tsx` — Shows current lat/lon values when configured, or "not been set before" amber banner when not configured
+- [x] `frontend/src/messages/en.json` / `zh.json` — Added `admin.locationNotSet`, `admin.currentLocation` i18n keys
+
+### 11C: Single-Punch Late Status Fix -- DONE
+- [x] `backend/app/services/reporting_service.py` — `calculate_status()` now returns LATE (not ABNORMAL) when a single punch is past the grace deadline. ABNORMAL only for single on-time punches.
+- [x] Design decision: single punch = clock-in; if late, status is LATE. Forgotten clock-in is handled via manager override.
+
+### 11D: Attendance Reason Submission Fixes -- DONE
+- [x] `backend/app/models/attendance_reason.py` — Fixed `created_at` from timezone-aware `datetime.now(UTC)` to naive `datetime.now` to match PostgreSQL `TIMESTAMP WITHOUT TIME ZONE` column
+- [x] `backend/alembic/versions/a1b2c3d4e5f6_add_attendance_reasons.py` — Must run `alembic upgrade head` to create `attendance_reasons` table
+
+### 11E: Shift Time Validation -- DONE
+- [x] `backend/app/schemas/employee.py` — Added `model_validator` to `EmployeeCreate` and `EmployeeUpdate` to reject `shift_end_time <= shift_start_time`
+
+### 11F: Attendance History Status Column -- DONE
+- [x] `backend/app/routers/attendance.py` — Added `GET /api/attendance/summaries` endpoint (employee's own daily summaries)
+- [x] `frontend/src/app/attendance/page.tsx` — Fetches daily summaries and displays status badges (Normal/Late/Early Leave/Abnormal) per date; date and status only shown on first row of each date group
+- [x] `frontend/src/messages/en.json` / `zh.json` — Added `attendance.statusNormal`, `statusLate`, `statusEarlyLeave`, `statusAbnormal` i18n keys
+
+### 11G: LATE_AND_EARLY_LEAVE Combined Status -- DONE
+- [x] `backend/app/models/daily_attendance_summary.py` — Added `LATE_AND_EARLY_LEAVE` to `AttendanceStatus` enum
+- [x] `backend/alembic/versions/b2c3d4e5f6a7_add_late_and_early_leave_status.py` — Migration to add new enum value to PostgreSQL
+- [x] `backend/app/services/reporting_service.py` — `calculate_status()` returns `LATE_AND_EARLY_LEAVE` when employee is both late and leaves early
+- [x] `backend/app/services/reason_service.py` — Allows reason submission for `LATE_AND_EARLY_LEAVE` status
+- [x] `backend/tests/unit/test_models.py` — Updated enum length assertion from 4 to 5
+- [x] `frontend/src/types/index.ts` — Added `LATE_AND_EARLY_LEAVE` to `AttendanceStatus` type
+- [x] `frontend/src/app/punch/page.tsx` — Shows both LATE and EARLY_LEAVE alerts for combined status; reason check covers new status
+- [x] `frontend/src/app/attendance/page.tsx` — StatusBadge handles `LATE_AND_EARLY_LEAVE`
+- [x] `frontend/src/app/reports/page.tsx` — StatusBadge, label map, and filter dropdown handle `LATE_AND_EARLY_LEAVE`
+- [x] `frontend/src/messages/en.json` / `zh.json` — Added `statusLateAndEarlyLeave` keys ("Late & Early Leave" / "遲到且早退")
+
+### 11H: Team Page Status Column -- DONE
+- [x] `frontend/src/app/team/page.tsx` — Fetches daily summaries via `/api/reports/daily` and displays StatusBadge per employee+date group
+- [x] `frontend/src/app/team/page.tsx` — Groups rows by employee+date: emp_id and status only shown on first row, thicker border between groups
+
+### 11I: Punch Page Duplicate Reason Prevention -- DONE
+- [x] `frontend/src/app/punch/page.tsx` — After tardy punch, checks `/api/reasons/me` to see if reason already submitted for that summary; shows "already submitted" instead of form
+
+## Phase 12: Future Enhancements (Pending HR Confirmation)
+
+### 12A: Absent Status Tracking -- PENDING
+- [ ] Add `ABSENT` to `AttendanceStatus` enum — employees with zero punches on a workday should get a summary with status `ABSENT`
+- [ ] Define workday rules (Mon-Fri? Per-employee schedules? Holiday calendar in `system_config`?)
+- [ ] Generate ABSENT summaries — either retroactively when viewing reports/team page, or via scheduled end-of-day job
+- [ ] Currently, employees who don't punch on a workday have **no record at all** — invisible in reports and team views
+- [ ] **Blocked on**: HR confirmation of workday rules, holiday handling, and generation timing
+
+## Test Coverage Summary
+
+| Layer | Tool | Actual / Est. | Target |
+|-------|------|--------------|--------|
+| Backend Unit | pytest | **176 passing** | 85% |
+| Backend Integration | pytest + httpx | **49 passing** | 80% |
+| Backend E2E | pytest | **5 passing** | Critical paths |
+| Frontend Unit | vitest + testing-library | **61 passing** | 80% |
+| Frontend E2E | Playwright | **33 stubs** (test.fixme) | Critical paths |
+| **Total** | | **291 passing + 33 stubs** | **80%+** |
+
+Note: Backend unit test count increased from 171 → 176 due to geolocation test fixes (same 8 tests, cleaner assertions).
+Actual total backend: 225 passing (176 unit + 49 integration). Total: 225 backend + 61 frontend = 286 code tests + 5 E2E = 291.

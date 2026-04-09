@@ -1,0 +1,171 @@
+"""Attendance router — punch, history, team/all views, and manager overrides."""
+
+import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
+from app.middleware.auth_middleware import get_current_user, require_role
+from app.models.employee import Role
+from app.schemas.attendance import (
+    AttendanceLogResponse,
+    OverrideRequest,
+    PunchGPSRequest,
+    PunchResponse,
+)
+from app.services import attendance_service
+
+router = APIRouter(prefix="/api/attendance", tags=["attendance"])
+
+
+@router.post("/punch", response_model=PunchResponse)
+async def punch(
+    body: PunchGPSRequest,
+    request: Request,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Record a clock-in/out punch for the authenticated employee."""
+    ip_address = request.client.host if request.client else "unknown"
+
+    try:
+        result = await attendance_service.punch(
+            session,
+            emp_id=user["sub"],
+            latitude=body.latitude,
+            longitude=body.longitude,
+            accuracy=body.accuracy,
+            ip_address=ip_address,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+    return PunchResponse(
+        work_mode=result.work_mode,
+        distance_km=result.distance_km,
+        is_low_accuracy=result.is_low_accuracy,
+        log=AttendanceLogResponse.model_validate(result.log),
+        tardiness_status=result.tardiness_status.value if result.tardiness_status else None,
+        summary_id=result.summary_id,
+    )
+
+
+@router.get("/today", response_model=list[AttendanceLogResponse])
+async def get_today(
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Return today's attendance logs for the authenticated employee."""
+    logs = await attendance_service.get_today_punches(session, user["sub"])
+    return [AttendanceLogResponse.model_validate(log) for log in logs]
+
+
+@router.get("/team", response_model=list[AttendanceLogResponse])
+async def get_team(
+    start_date: datetime.date = Query(...),
+    end_date: datetime.date = Query(...),
+    user: dict = require_role(Role.MANAGER),
+    session: AsyncSession = Depends(get_db),
+):
+    """Return attendance logs for the manager's team between start_date and end_date (inclusive)."""
+    try:
+        logs = await attendance_service.get_team_logs(
+            session, user["sub"], start_date, end_date
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+    return [AttendanceLogResponse.model_validate(log) for log in logs]
+
+
+@router.get("/all", response_model=list[AttendanceLogResponse])
+async def get_all(
+    start_date: datetime.date = Query(...),
+    end_date: datetime.date = Query(...),
+    user: dict = require_role(Role.HR),
+    session: AsyncSession = Depends(get_db),
+):
+    """Return all attendance logs between start_date and end_date inclusive (HR/Admin only)."""
+    logs = await attendance_service.get_all_logs(session, start_date, end_date)
+    return [AttendanceLogResponse.model_validate(log) for log in logs]
+
+
+@router.get("", response_model=list[AttendanceLogResponse])
+async def get_history(
+    start_date: datetime.date = Query(...),
+    end_date: datetime.date = Query(...),
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Return attendance history for the authenticated employee."""
+    logs = await attendance_service.get_history(
+        session, user["sub"], start_date, end_date
+    )
+    return [AttendanceLogResponse.model_validate(log) for log in logs]
+
+
+@router.get("/summaries")
+async def get_my_summaries(
+    start_date: datetime.date = Query(...),
+    end_date: datetime.date = Query(...),
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Return daily attendance summaries for the authenticated employee."""
+    from app.services import reporting_service
+
+    summaries = await reporting_service.get_daily_report(
+        session,
+        start_date=start_date,
+        end_date=end_date,
+        emp_id=user["sub"],
+    )
+    return [
+        {
+            "date": s.date.isoformat(),
+            "status": s.status.value,
+        }
+        for s in summaries
+    ]
+
+
+@router.post("/override", response_model=AttendanceLogResponse)
+async def override(
+    body: OverrideRequest,
+    request: Request,
+    user: dict = require_role(Role.MANAGER),
+    session: AsyncSession = Depends(get_db),
+):
+    """Create a manager-override attendance entry."""
+    ip_address = request.client.host if request.client else "unknown"
+
+    try:
+        log = await attendance_service.override_attendance(
+            session,
+            manager_emp_id=user["sub"],
+            target_emp_id=body.target_emp_id,
+            latitude=body.latitude,
+            longitude=body.longitude,
+            accuracy=body.accuracy,
+            ip_address=ip_address,
+            work_mode=body.work_mode,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        )
+
+    return AttendanceLogResponse.model_validate(log)
