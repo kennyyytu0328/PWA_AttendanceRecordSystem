@@ -1,10 +1,17 @@
 """Tests for Taiwan workday calendar utility."""
 
 import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.utils.taiwan_calendar import DayInfo, parse_calendar_json, get_month_info_from_data, is_workday_from_data
+from app.utils.taiwan_calendar import (
+    DayInfo,
+    fetch_calendar_from_cdn,
+    get_month_info_from_data,
+    is_workday_from_data,
+    parse_calendar_json,
+)
 
 
 # --- Test data ---
@@ -106,3 +113,55 @@ class TestGetMonthInfo:
         data = parse_calendar_json([])
         result = get_month_info_from_data(data, 2026, 2)
         assert len(result) == 28
+
+
+class TestFetchFromCDN:
+    @pytest.mark.asyncio
+    async def test_fetch_success_returns_parsed_data(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {"date": "20260101", "week": "四", "isHoliday": True, "description": "開國紀念日"},
+            {"date": "20260102", "week": "五", "isHoliday": False, "description": ""},
+        ]
+
+        with patch("app.utils.taiwan_calendar.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.get = AsyncMock(return_value=mock_response)
+            mock_client_cls.return_value = mock_client
+
+            result = await fetch_calendar_from_cdn(2026)
+
+        assert len(result) == 2
+        assert result[0].date == datetime.date(2026, 1, 1)
+
+    @pytest.mark.asyncio
+    async def test_fetch_failure_returns_empty_list(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+
+        with patch("app.utils.taiwan_calendar.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.get = AsyncMock(return_value=mock_response)
+            mock_client_cls.return_value = mock_client
+
+            result = await fetch_calendar_from_cdn(2026)
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_fetch_network_error_returns_empty_list(self):
+        with patch("app.utils.taiwan_calendar.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.get = AsyncMock(side_effect=Exception("Network error"))
+            mock_client_cls.return_value = mock_client
+
+            result = await fetch_calendar_from_cdn(2026)
+
+        assert result == []

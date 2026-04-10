@@ -78,3 +78,28 @@ async def set_config(
     await session.commit()
     await session.refresh(config)
     return config
+
+
+async def get_workday_calendar(
+    session: AsyncSession, year: int
+) -> dict[str, Any] | None:
+    """Get cached workday calendar for a year."""
+    config = await get_by_key(session, f"workday_calendar_{year}")
+    if config is None:
+        return None
+    return config.value
+
+
+async def set_workday_calendar(
+    session: AsyncSession,
+    year: int,
+    entries: list[dict[str, Any]],
+    updated_by: str,
+) -> SystemConfig:
+    """Cache workday calendar data for a year."""
+    return await set_config(
+        session,
+        key=f"workday_calendar_{year}",
+        value={"entries": entries, "year": year},
+        updated_by=updated_by,
+    )

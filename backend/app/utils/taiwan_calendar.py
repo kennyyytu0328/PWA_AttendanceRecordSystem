@@ -11,6 +11,8 @@ import datetime
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
+
 _MAKEUP_KEYWORDS = ("補行上班", "補班")
 _WEEKDAY_ZH = ["一", "二", "三", "四", "五", "六", "日"]
 
@@ -90,3 +92,19 @@ def get_month_info_from_data(
                 )
             )
     return result
+
+
+async def fetch_calendar_from_cdn(year: int) -> list[DayInfo]:
+    """Fetch Taiwan calendar data from ruyut/TaiwanCalendar CDN.
+
+    Returns empty list on any failure (network, 404, parse error).
+    """
+    url = CALENDAR_CDN_URL.format(year=year)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url)
+        if response.status_code != 200:
+            return []
+        return parse_calendar_json(response.json())
+    except Exception:
+        return []
