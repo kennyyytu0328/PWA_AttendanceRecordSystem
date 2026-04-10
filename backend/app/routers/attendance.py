@@ -14,6 +14,7 @@ from app.schemas.attendance import (
     PunchGPSRequest,
     PunchResponse,
 )
+from app.schemas.bulk_override import BulkOverrideRequest
 from app.services import attendance_service
 
 router = APIRouter(prefix="/api/attendance", tags=["attendance"])
@@ -169,3 +170,33 @@ async def override(
         )
 
     return AttendanceLogResponse.model_validate(log)
+
+
+@router.put("/override-bulk")
+async def bulk_override(
+    body: BulkOverrideRequest,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    """Bulk override attendance punches for a month."""
+    target_emp_id = body.emp_id if body.emp_id else user["sub"]
+    try:
+        result = await attendance_service.bulk_override_punches(
+            session,
+            emp_id=target_emp_id,
+            requesting_user_id=user["sub"],
+            requesting_user_role=Role(user["role"]),
+            entries=[
+                {
+                    "date": entry.date,
+                    "first_clock_in": entry.first_clock_in,
+                    "last_clock_out": entry.last_clock_out,
+                }
+                for entry in body.entries
+            ],
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return result
