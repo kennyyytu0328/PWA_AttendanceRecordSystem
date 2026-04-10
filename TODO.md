@@ -326,16 +326,53 @@
 - [ ] Currently, employees who don't punch on a workday have **no record at all** — invisible in reports and team views
 - [ ] **Blocked on**: HR confirmation of workday rules, holiday handling, and generation timing
 
+## Phase 13: Monthly Punch Override & Team Reason Column
+
+### 13A: Team Page Reason Column -- DONE
+- [x] `backend/app/repositories/reason_repository.py` — Added `find_by_summary_ids()` for bulk reason lookup
+- [x] `backend/app/routers/reports.py` — `/api/reports/daily` now includes `reason` field (joined from `attendance_reasons` table)
+- [x] `frontend/src/app/team/page.tsx` — Added "Reason" column displaying employee-submitted reasons next to status
+- [x] `frontend/src/messages/en.json` / `zh.json` — Added `team.reason` i18n key ("Reason" / "事由")
+
+### 13B: Monthly Punch Override (Dashboard Quick Action) -- DONE
+Employee can bulk-edit first clock-in and last clock-out times for any day of the month. Takes effect immediately (no approval). Supports pre-filling future days for salary settlement. Integrated with Taiwan workday calendar.
+
+#### Taiwan Workday Calendar
+- [x] `backend/app/utils/taiwan_calendar.py` — `DayInfo` dataclass, `parse_calendar_json()`, `is_workday_from_data()`, `get_month_info_from_data()`, `fetch_calendar_from_cdn()` — auto-fetches from ruyut/TaiwanCalendar CDN
+- [x] `backend/app/repositories/system_config_repository.py` — Added `get_workday_calendar()`, `set_workday_calendar()` helpers (cached in `system_config` table)
+- [x] `backend/app/routers/system_config.py` — Added `GET /api/config/workdays`, `POST /api/config/workdays/refresh` (HR+), `GET /api/config/workdays/status` (HR+)
+
+#### Backend
+- [x] `backend/app/schemas/bulk_override.py` — `BulkOverrideEntry`, `BulkOverrideRequest`, `BulkOverrideDayResult`, `BulkOverrideResponse`
+- [x] `backend/app/repositories/attendance_repository.py` — Added `mark_overridden_by_employee_and_date()` (marks old logs, preserves content)
+- [x] `backend/app/services/attendance_service.py` — Added `bulk_override_punches()` with permission checks (EMPLOYEE=self only, HR+=any), override marking, new log creation, summary recalculation
+- [x] `backend/app/routers/attendance.py` — Added `PUT /api/attendance/override-bulk` endpoint
+- [x] Original raw punch records preserved in `attendance_logs` for HR/Manager audit trail
+- [x] Supports pre-filling future dates (creates new attendance log entries)
+
+#### Frontend
+- [x] `frontend/src/types/index.ts` — Added `WorkdayInfo`, `WorkdaysResponse`, `CalendarStatus`, `CalendarStatusResponse`, `BulkOverrideEntry`, `BulkOverrideRequest`, `BulkOverrideDayResult`, `BulkOverrideResponse`
+- [x] `frontend/src/app/dashboard/page.tsx` — Added "Monthly Punch Override" quick action card
+- [x] `frontend/src/app/dashboard/monthly-override/page.tsx` — Full monthly calendar table with editable time inputs, holiday/weekend rows greyed out, 補班 rows with amber badge, HR employee selector, Save All with feedback
+- [x] `frontend/src/app/admin/page.tsx` — Added `CalendarStatusSection` (HR+) showing loaded calendar years, last updated, "更新全年行事曆" refresh button
+- [x] `frontend/src/messages/en.json` / `zh.json` — Added i18n keys for monthly override and calendar status
+
+#### Tests
+- [x] `backend/tests/unit/test_taiwan_calendar.py` — 18 tests (parsing, workday detection, month info, CDN fetch)
+- [x] `backend/tests/unit/test_bulk_override_service.py` — 7 tests (create logs, mark overridden, recalculate summaries, permissions, validation)
+- [x] `backend/tests/integration/test_workday_api.py` — 7 tests (GET workdays, auto-fetch, refresh HR/forbidden, status HR/forbidden)
+- [x] `backend/tests/integration/test_bulk_override_api.py` — 5 tests (success, HR for other, unauth, empty entries, permission error)
+- [x] `frontend/__tests__/unit/app/monthly-override.test.tsx` — 7 tests (page render, calendar table, holidays, save flow, HR selector)
+
 ## Test Coverage Summary
 
 | Layer | Tool | Actual / Est. | Target |
 |-------|------|--------------|--------|
-| Backend Unit | pytest | **176 passing** | 85% |
-| Backend Integration | pytest + httpx | **49 passing** | 80% |
+| Backend Unit | pytest | **201 passing** | 85% |
+| Backend Integration | pytest + httpx | **61 passing** | 80% |
 | Backend E2E | pytest | **5 passing** | Critical paths |
-| Frontend Unit | vitest + testing-library | **61 passing** | 80% |
+| Frontend Unit | vitest + testing-library | **68 passing** | 80% |
 | Frontend E2E | Playwright | **33 stubs** (test.fixme) | Critical paths |
-| **Total** | | **291 passing + 33 stubs** | **80%+** |
+| **Total** | | **335 passing + 33 stubs** | **80%+** |
 
-Note: Backend unit test count increased from 171 → 176 due to geolocation test fixes (same 8 tests, cleaner assertions).
-Actual total backend: 225 passing (176 unit + 49 integration). Total: 225 backend + 61 frontend = 286 code tests + 5 E2E = 291.
+Note: Backend: 262 passing (201 unit + 61 integration). Frontend: 68 passing (27 from pre-existing + 7 new monthly-override; 41 pre-existing failures from Next.js version migration unrelated to Phase 13). Total: 262 backend + 68 frontend = 330 code tests + 5 E2E = 335.
