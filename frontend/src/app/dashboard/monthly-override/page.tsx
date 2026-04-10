@@ -240,12 +240,13 @@ export default function MonthlyOverridePage() {
     fetchData();
   }, [fetchData]);
 
-  // Handle time input changes
+  // Handle time input changes — always normalize to HH:MM (drop seconds)
   const handleClockInChange = useCallback(
     (date: string, value: string) => {
+      const normalized = value.slice(0, 5);
       setRows((prev) =>
         prev.map((row) =>
-          row.date === date ? { ...row, clockIn: value } : row,
+          row.date === date ? { ...row, clockIn: normalized } : row,
         ),
       );
     },
@@ -254,9 +255,10 @@ export default function MonthlyOverridePage() {
 
   const handleClockOutChange = useCallback(
     (date: string, value: string) => {
+      const normalized = value.slice(0, 5);
       setRows((prev) =>
         prev.map((row) =>
-          row.date === date ? { ...row, clockOut: value } : row,
+          row.date === date ? { ...row, clockOut: normalized } : row,
         ),
       );
     },
@@ -476,6 +478,7 @@ export default function MonthlyOverridePage() {
                       {row.isEditable ? (
                         <input
                           type="time"
+                          step={60}
                           data-testid="clock-in-input"
                           value={row.clockIn}
                           onChange={(e) =>
@@ -491,6 +494,7 @@ export default function MonthlyOverridePage() {
                       {row.isEditable ? (
                         <input
                           type="time"
+                          step={60}
                           data-testid="clock-out-input"
                           value={row.clockOut}
                           onChange={(e) =>
