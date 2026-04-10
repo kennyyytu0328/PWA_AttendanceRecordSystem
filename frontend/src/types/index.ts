@@ -112,6 +112,64 @@ export interface SystemConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Workday Calendar
+// ---------------------------------------------------------------------------
+export interface WorkdayInfo {
+  readonly date: string;
+  readonly weekday_zh: string;
+  readonly is_holiday: boolean;
+  readonly description: string;
+  readonly is_makeup_workday: boolean;
+}
+
+export interface WorkdaysResponse {
+  readonly year: number;
+  readonly month: number;
+  readonly days: readonly WorkdayInfo[];
+}
+
+export interface CalendarStatus {
+  readonly year: number;
+  readonly loaded: boolean;
+  readonly entry_count?: number;
+  readonly updated_at?: string;
+  readonly updated_by?: string;
+}
+
+export interface CalendarStatusResponse {
+  readonly calendars: readonly CalendarStatus[];
+}
+
+// ---------------------------------------------------------------------------
+// Bulk Override
+// ---------------------------------------------------------------------------
+export interface BulkOverrideEntry {
+  readonly date: string;
+  readonly first_clock_in: string | null;
+  readonly last_clock_out: string | null;
+}
+
+export interface BulkOverrideRequest {
+  readonly year: number;
+  readonly month: number;
+  readonly emp_id?: string;
+  readonly entries: readonly BulkOverrideEntry[];
+}
+
+export interface BulkOverrideDayResult {
+  readonly date: string;
+  readonly first_clock_in: string | null;
+  readonly last_clock_out: string | null;
+  readonly status: string | null;
+}
+
+export interface BulkOverrideResponse {
+  readonly emp_id: string;
+  readonly updated_count: number;
+  readonly results: readonly BulkOverrideDayResult[];
+}
+
+// ---------------------------------------------------------------------------
 // API Response wrapper
 // ---------------------------------------------------------------------------
 export interface ApiError {
