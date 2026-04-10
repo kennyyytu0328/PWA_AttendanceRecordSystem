@@ -1,6 +1,6 @@
 "use client";
 
-import { Shield, Users, MapPin, Settings, Plus, Pencil, X, Timer, Building2, Trash2 } from "lucide-react";
+import { Shield, Users, MapPin, Settings, Plus, Pencil, X, Timer, Building2, Trash2, CalendarDays, RefreshCw } from "lucide-react";
 
 import { BackButton } from "@/components/BackButton";
 import { useEffect, useState } from "react";
@@ -9,7 +9,7 @@ import { apiClient } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useTranslation } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import type { Employee, OfficeLocation, Role, SystemConfig } from "@/types";
+import type { Employee, OfficeLocation, Role, SystemConfig, CalendarStatus, CalendarStatusResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Role hierarchy helpers
@@ -787,6 +787,131 @@ function SystemConfigSection() {
 }
 
 // ---------------------------------------------------------------------------
+// Calendar Status Section
+// ---------------------------------------------------------------------------
+
+function CalendarStatusSection() {
+  const { t } = useTranslation();
+  const [calendars, setCalendars] = useState<readonly CalendarStatus[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshingYear, setRefreshingYear] = useState<number | null>(null);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  async function fetchStatus() {
+    try {
+      const data = await apiClient.get<CalendarStatusResponse>("/api/config/workdays/status");
+      setCalendars(data.calendars);
+      setError(null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : t("calendarStatus.refreshError");
+      setError(msg);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchStatus();
+  }, []);
+
+  async function handleRefresh(year: number) {
+    setRefreshingYear(year);
+    setMessage(null);
+    try {
+      await apiClient.post(`/api/config/workdays/refresh?year=${year}`, {});
+      setMessage({ type: "success", text: t("calendarStatus.refreshSuccess") });
+      await fetchStatus();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : t("calendarStatus.refreshError");
+      setMessage({ type: "error", text: msg });
+    } finally {
+      setRefreshingYear(null);
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="mb-4 flex items-center gap-2">
+        <CalendarDays className="h-5 w-5 text-indigo-600" />
+        <h2 className="text-lg font-semibold text-gray-900">
+          {t("calendarStatus.title")}
+        </h2>
+      </div>
+
+      {message && (
+        <div className={`mb-4 rounded-lg border px-3 py-2 text-sm ${
+          message.type === "success"
+            ? "border-green-200 bg-green-50 text-green-700"
+            : "border-red-200 bg-red-50 text-red-700"
+        }`}>
+          {message.text}
+        </div>
+      )}
+
+      {isLoading && (
+        <p className="text-sm text-gray-500">{t("common.loading")}</p>
+      )}
+
+      {error && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {!isLoading && !error && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 text-gray-600">
+                <th className="pb-2 pr-4 font-medium">{t("calendarStatus.year")}</th>
+                <th className="pb-2 pr-4 font-medium">{t("calendarStatus.status")}</th>
+                <th className="pb-2 pr-4 font-medium">{t("calendarStatus.lastUpdated")}</th>
+                <th className="pb-2 pr-4 font-medium">{t("calendarStatus.updatedBy")}</th>
+                <th className="pb-2 font-medium">{t("admin.colActions")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {calendars.map((cal) => (
+                <tr key={cal.year} className="border-b border-gray-100 last:border-0">
+                  <td className="py-2 pr-4 font-mono text-gray-900">{cal.year}</td>
+                  <td className="py-2 pr-4">
+                    {cal.loaded ? (
+                      <span className="inline-block rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+                        {t("calendarStatus.loaded")} ({cal.entry_count ?? 0} {t("calendarStatus.entries")})
+                      </span>
+                    ) : (
+                      <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                        {t("calendarStatus.notLoaded")}
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-2 pr-4 text-gray-600">
+                    {cal.updated_at ? new Date(cal.updated_at).toLocaleString() : "-"}
+                  </td>
+                  <td className="py-2 pr-4 text-gray-600">{cal.updated_by ?? "-"}</td>
+                  <td className="py-2">
+                    <button
+                      type="button"
+                      disabled={refreshingYear === cal.year}
+                      onClick={() => handleRefresh(cal.year)}
+                      className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${refreshingYear === cal.year ? "animate-spin" : ""}`} />
+                      {refreshingYear === cal.year ? t("calendarStatus.refreshing") : t("calendarStatus.refresh")}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Access Denied Component
 // ---------------------------------------------------------------------------
 
@@ -870,6 +995,7 @@ export default function AdminPage() {
           <EmployeeManagementSection userRole={userRole} departments={departments} />
           <OfficeLocationSection />
           <GracePeriodSection />
+          <CalendarStatusSection />
           {canAccessAdmin && <SystemConfigSection />}
         </div>
       </div>

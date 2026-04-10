@@ -9,6 +9,7 @@ import {
   Settings,
   FileText,
   CalendarDays,
+  Calendar,
   MapPin,
   Fingerprint,
   Check,
@@ -318,6 +319,12 @@ export default function DashboardPage() {
               label={t("dashboard.attendanceHistory")}
               description={t("dashboard.attendanceDesc")}
               icon={<CalendarDays className="h-5 w-5" />}
+            />
+            <NavLinkCard
+              href="/dashboard/monthly-override"
+              label={t("monthlyOverride.title")}
+              description={t("monthlyOverride.subtitle")}
+              icon={<Calendar className="h-5 w-5" />}
             />
             {hasRole(role, MANAGER_ROLES) && (
               <NavLinkCard
