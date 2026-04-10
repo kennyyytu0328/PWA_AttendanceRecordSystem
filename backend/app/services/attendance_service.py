@@ -11,12 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.attendance_log import AttendanceLog, WorkMode
 from app.models.daily_attendance_summary import AttendanceStatus
+from app.models.employee import Role
 from app.repositories import attendance_repository, employee_repository, system_config_repository
-from app.services import geolocation_service
+from app.services import geolocation_service, reporting_service
 from app.services.permission_service import APPROVE_OVERRIDE, has_permission
 
 __all__ = [
     "PunchResult",
+    "bulk_override_punches",
     "get_all_logs",
     "get_history",
     "get_team_logs",
@@ -253,3 +255,105 @@ async def override_attendance(
     )
 
     return await attendance_repository.create_log(session, log)
+
+
+async def bulk_override_punches(
+    session: AsyncSession,
+    emp_id: str,
+    requesting_user_id: str,
+    requesting_user_role: Role,
+    entries: list[dict],
+) -> dict:
+    """Bulk override attendance punches for an employee.
+
+    Creates new log entries with is_overridden=True on old entries.
+    Recalculates daily summaries for all affected dates.
+
+    Raises
+    ------
+    ValueError
+        If target employee not found.
+    PermissionError
+        If requesting user lacks permission.
+    """
+    # Permission check
+    if emp_id != requesting_user_id:
+        role_hierarchy = [Role.EMPLOYEE, Role.MANAGER, Role.HR, Role.ADMIN]
+        role_index = role_hierarchy.index(requesting_user_role)
+        hr_index = role_hierarchy.index(Role.HR)
+        if role_index < hr_index:
+            raise PermissionError(
+                "You cannot override another employee's punches"
+            )
+
+    # Verify employee exists
+    employee = await employee_repository.find_by_id(session, emp_id)
+    if employee is None:
+        raise ValueError(f"Employee {emp_id} not found")
+
+    results: list[dict] = []
+    updated_count = 0
+
+    for entry in entries:
+        entry_date = entry["date"]
+        clock_in_time = entry.get("first_clock_in")
+        clock_out_time = entry.get("last_clock_out")
+
+        if clock_in_time is None and clock_out_time is None:
+            continue
+
+        # Mark existing logs as overridden
+        await attendance_repository.mark_overridden_by_employee_and_date(
+            session, emp_id, entry_date
+        )
+
+        # Create new clock-in log
+        if clock_in_time is not None:
+            clock_in_dt = datetime.datetime.combine(entry_date, clock_in_time)
+            clock_in_log = AttendanceLog(
+                emp_id=emp_id,
+                timestamp=clock_in_dt,
+                latitude=0.0,
+                longitude=0.0,
+                accuracy=0.0,
+                ip_address="override",
+                work_mode=WorkMode.OFFICE,
+                is_overridden=False,
+            )
+            await attendance_repository.create_log(session, clock_in_log)
+
+        # Create new clock-out log
+        if clock_out_time is not None:
+            clock_out_dt = datetime.datetime.combine(entry_date, clock_out_time)
+            clock_out_log = AttendanceLog(
+                emp_id=emp_id,
+                timestamp=clock_out_dt,
+                latitude=0.0,
+                longitude=0.0,
+                accuracy=0.0,
+                ip_address="override",
+                work_mode=WorkMode.OFFICE,
+                is_overridden=False,
+            )
+            await attendance_repository.create_log(session, clock_out_log)
+
+        # Recalculate summary
+        summary = await reporting_service.generate_daily_summary(
+            session, emp_id, entry_date
+        )
+
+        results.append({
+            "date": str(entry_date),
+            "first_clock_in": str(clock_in_time) if clock_in_time else None,
+            "last_clock_out": str(clock_out_time) if clock_out_time else None,
+            "status": summary.status.value if summary else None,
+        })
+        updated_count += 1
+
+    await session.commit()
+
+    return {
+        "emp_id": emp_id,
+        "updated_count": updated_count,
+        "results": results,
+    }
