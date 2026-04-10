@@ -257,6 +257,7 @@ function StatusBadge({ status }: { readonly status: string | undefined }) {
     EARLY_LEAVE: { color: "bg-amber-100 text-amber-700", label: t("attendance.statusEarlyLeave") },
     LATE_AND_EARLY_LEAVE: { color: "bg-red-100 text-red-700", label: t("attendance.statusLateAndEarlyLeave") },
     ABNORMAL: { color: "bg-gray-100 text-gray-600", label: t("attendance.statusAbnormal") },
+    ABSENT: { color: "bg-red-100 text-red-700", label: t("attendance.statusAbsent") },
   };
 
   const c = config[status] ?? { color: "bg-gray-100 text-gray-600", label: status };

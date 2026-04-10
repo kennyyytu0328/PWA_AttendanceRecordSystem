@@ -16,6 +16,7 @@ class AttendanceStatus(str, enum.Enum):
     EARLY_LEAVE = "EARLY_LEAVE"
     LATE_AND_EARLY_LEAVE = "LATE_AND_EARLY_LEAVE"
     ABNORMAL = "ABNORMAL"
+    ABSENT = "ABSENT"
 
 
 class DailyAttendanceSummary(SQLModel, table=True):

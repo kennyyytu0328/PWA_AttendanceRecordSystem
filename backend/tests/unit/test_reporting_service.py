@@ -290,10 +290,12 @@ async def test_generate_summaries_for_all_employees(
 
     summaries = await generate_all_summaries(db_session, target_date)
 
-    # EMP022 has no punches -> skipped -> only 2 summaries
-    assert len(summaries) == 2
-    emp_ids = {s.emp_id for s in summaries}
-    assert emp_ids == {"EMP020", "EMP021"}
+    # Phase 12: 2026-03-19 is a Thursday workday → EMP022 gets ABSENT summary
+    assert len(summaries) == 3
+    by_emp = {s.emp_id: s for s in summaries}
+    assert by_emp["EMP020"].status == AttendanceStatus.NORMAL
+    assert by_emp["EMP021"].status == AttendanceStatus.LATE
+    assert by_emp["EMP022"].status == AttendanceStatus.ABSENT
 
 
 # ---------------------------------------------------------------------------
@@ -464,3 +466,146 @@ async def test_export_department_filter(db_session: AsyncSession) -> None:
     assert len(data) == 1
     assert data[0]["emp_id"] == "EMP040"
     assert data[0]["department"] == "Engineering"
+
+
+# ---------------------------------------------------------------------------
+# Phase 12: ABSENT status tests
+# ---------------------------------------------------------------------------
+
+
+async def _set_calendar_with_holiday(
+    session: AsyncSession, holiday: datetime.date
+) -> None:
+    """Seed system_config with calendar data marking one date as a holiday."""
+    from app.repositories import system_config_repository
+
+    entries = [
+        {
+            "date": holiday.strftime("%Y%m%d"),
+            "week": "四",
+            "isHoliday": True,
+            "description": "Public Holiday",
+        }
+    ]
+    await system_config_repository.set_workday_calendar(
+        session, holiday.year, entries, updated_by="admin"
+    )
+
+
+@freeze_time("2026-03-19 20:00:00")
+async def test_generate_all_summaries_creates_absent_for_non_punching(
+    db_session: AsyncSession,
+) -> None:
+    """Employees without punches on a workday get an ABSENT summary."""
+    from app.services.reporting_service import generate_all_summaries
+
+    # 2026-03-19 is a Thursday (workday)
+    target_date = datetime.date(2026, 3, 19)
+
+    await _create_employee(db_session, "EMP100", name="Alice")
+    await _create_employee(db_session, "EMP101", name="Bob")
+    await _create_employee(db_session, "EMP102", name="Carol")
+
+    # EMP100 punches normally; EMP101 and EMP102 have no punches
+    await _create_attendance_log(
+        db_session, "EMP100", datetime.datetime(2026, 3, 19, 8, 55)
+    )
+    await _create_attendance_log(
+        db_session, "EMP100", datetime.datetime(2026, 3, 19, 18, 5)
+    )
+
+    summaries = await generate_all_summaries(db_session, target_date)
+
+    # 3 summaries total: 1 NORMAL + 2 ABSENT
+    assert len(summaries) == 3
+    by_emp = {s.emp_id: s for s in summaries}
+    assert by_emp["EMP100"].status == AttendanceStatus.NORMAL
+    assert by_emp["EMP101"].status == AttendanceStatus.ABSENT
+    assert by_emp["EMP102"].status == AttendanceStatus.ABSENT
+
+
+@freeze_time("2026-03-19 20:00:00")
+async def test_generate_all_summaries_skips_absent_on_holiday(
+    db_session: AsyncSession,
+) -> None:
+    """No ABSENT summaries are generated on holidays."""
+    from app.services.reporting_service import generate_all_summaries
+
+    target_date = datetime.date(2026, 3, 19)
+    await _set_calendar_with_holiday(db_session, target_date)
+
+    await _create_employee(db_session, "EMP110", name="Alice")
+    await _create_employee(db_session, "EMP111", name="Bob")
+
+    summaries = await generate_all_summaries(db_session, target_date)
+
+    # Holiday → no ABSENT generation, no punches → no summaries at all
+    assert summaries == []
+
+
+@freeze_time("2026-03-21 20:00:00")
+async def test_generate_all_summaries_skips_absent_on_weekend(
+    db_session: AsyncSession,
+) -> None:
+    """No ABSENT summaries are generated on weekends (fallback Mon-Fri rule)."""
+    from app.services.reporting_service import generate_all_summaries
+
+    # 2026-03-21 is a Saturday — no calendar data, fallback treats it as non-workday
+    target_date = datetime.date(2026, 3, 21)
+
+    await _create_employee(db_session, "EMP120", name="Alice")
+    await _create_employee(db_session, "EMP121", name="Bob")
+
+    summaries = await generate_all_summaries(db_session, target_date)
+
+    assert summaries == []
+
+
+@freeze_time("2026-03-19 20:00:00")
+async def test_absent_summary_has_null_clock_times(
+    db_session: AsyncSession,
+) -> None:
+    """ABSENT summaries must have first_clock_in and last_clock_out set to None."""
+    from app.services.reporting_service import generate_all_summaries
+
+    target_date = datetime.date(2026, 3, 19)
+    await _create_employee(db_session, "EMP130", name="Dave")
+
+    summaries = await generate_all_summaries(db_session, target_date)
+
+    assert len(summaries) == 1
+    absent = summaries[0]
+    assert absent.status == AttendanceStatus.ABSENT
+    assert absent.first_clock_in is None
+    assert absent.last_clock_out is None
+
+
+@freeze_time("2026-03-19 20:00:00")
+async def test_override_replaces_absent(db_session: AsyncSession) -> None:
+    """When an absent employee later gets a punch, the summary upserts from ABSENT to the calculated status."""
+    from app.services.reporting_service import (
+        generate_all_summaries,
+        generate_daily_summary,
+    )
+
+    target_date = datetime.date(2026, 3, 19)
+    await _create_employee(db_session, "EMP140", name="Eve")
+
+    # First pass: no punches → ABSENT
+    summaries = await generate_all_summaries(db_session, target_date)
+    assert len(summaries) == 1
+    assert summaries[0].status == AttendanceStatus.ABSENT
+
+    # Manager/monthly override adds punches after the fact
+    await _create_attendance_log(
+        db_session, "EMP140", datetime.datetime(2026, 3, 19, 8, 55)
+    )
+    await _create_attendance_log(
+        db_session, "EMP140", datetime.datetime(2026, 3, 19, 18, 5)
+    )
+
+    updated = await generate_daily_summary(db_session, "EMP140", target_date)
+    assert updated is not None
+    assert updated.status == AttendanceStatus.NORMAL
+    assert updated.first_clock_in == datetime.datetime(2026, 3, 19, 8, 55)
+    assert updated.last_clock_out == datetime.datetime(2026, 3, 19, 18, 5)

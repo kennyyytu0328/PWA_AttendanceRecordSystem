@@ -43,6 +43,7 @@ function StatusBadge({ status, label }: { readonly status: string; readonly labe
     EARLY_LEAVE: "bg-amber-100 text-amber-700",
     LATE_AND_EARLY_LEAVE: "bg-red-100 text-red-700",
     ABNORMAL: "bg-gray-100 text-gray-600",
+    ABSENT: "bg-red-100 text-red-700",
   };
 
   return (
@@ -88,7 +89,8 @@ function DailyReportSection() {
     LATE: t("reports.statusLate"),
     EARLY_LEAVE: t("reports.statusEarlyLeave"),
     LATE_AND_EARLY_LEAVE: t("reports.statusLateAndEarlyLeave"),
-    ABNORMAL: t("reports.statusAbsent"),
+    ABNORMAL: t("reports.statusAbnormal"),
+    ABSENT: t("reports.statusAbsent"),
   };
 
   const fetchReport = useCallback(async () => {
@@ -181,7 +183,8 @@ function DailyReportSection() {
             <option value="LATE">{t("reports.statusLate")}</option>
             <option value="EARLY_LEAVE">{t("reports.statusEarlyLeave")}</option>
             <option value="LATE_AND_EARLY_LEAVE">{t("reports.statusLateAndEarlyLeave")}</option>
-            <option value="ABNORMAL">{t("reports.statusAbsent")}</option>
+            <option value="ABNORMAL">{t("reports.statusAbnormal")}</option>
+            <option value="ABSENT">{t("reports.statusAbsent")}</option>
           </select>
         </div>
       </div>

@@ -317,14 +317,21 @@
 ### 11I: Punch Page Duplicate Reason Prevention -- DONE
 - [x] `frontend/src/app/punch/page.tsx` — After tardy punch, checks `/api/reasons/me` to see if reason already submitted for that summary; shows "already submitted" instead of form
 
-## Phase 12: Future Enhancements (Pending HR Confirmation)
+## Phase 12: Absent Status Tracking -- DONE (6 tests)
 
-### 12A: Absent Status Tracking -- PENDING
-- [ ] Add `ABSENT` to `AttendanceStatus` enum — employees with zero punches on a workday should get a summary with status `ABSENT`
-- [ ] Define workday rules (Mon-Fri? Per-employee schedules? Holiday calendar in `system_config`?)
-- [ ] Generate ABSENT summaries — either retroactively when viewing reports/team page, or via scheduled end-of-day job
-- [ ] Currently, employees who don't punch on a workday have **no record at all** — invisible in reports and team views
-- [ ] **Blocked on**: HR confirmation of workday rules, holiday handling, and generation timing
+### 12A: Absent Status Tracking -- DONE
+- [x] `backend/app/models/daily_attendance_summary.py` — Added `ABSENT` to `AttendanceStatus` enum (6 values total)
+- [x] `backend/alembic/versions/c3d4e5f6a7b8_add_absent_status.py` — Migration adds `ABSENT` enum value to PostgreSQL
+- [x] `backend/app/services/reporting_service.py` — `generate_all_summaries()` now also generates `ABSENT` summaries for non-punching employees on workdays (Taiwan calendar via `is_workday_from_data`, fallback Mon-Fri for weekends)
+- [x] `backend/app/services/reporting_service.py` — Added `_load_calendar_for_year()` helper to read cached Taiwan calendar data from `system_config`; no ABSENT generation on holidays / weekends
+- [x] Monthly override / manager punch insertion automatically replaces an ABSENT summary via existing `upsert_summary` flow (no special code needed)
+- [x] `backend/tests/unit/test_reporting_service.py` — Added 5 new tests: absent for non-punching, skip on holiday, skip on weekend, null clock times, override replaces absent
+- [x] `backend/tests/integration/test_reports_api.py` — Added `test_generate_summaries_includes_absent_count`
+- [x] `backend/tests/unit/test_models.py` — Enum length updated 5 → 6
+- [x] `backend/tests/e2e/test_punch_workflow.py` — Relaxed export sort-order assertion (other users may now get ABSENT summaries)
+- [x] `frontend/src/types/index.ts` — Added `"ABSENT"` to `AttendanceStatus` type union
+- [x] `frontend/src/app/attendance/page.tsx`, `team/page.tsx`, `reports/page.tsx` — `StatusBadge` handles `ABSENT` (red background) with proper i18n label; reports page now has both `ABNORMAL` and `ABSENT` filter options, and `ABNORMAL` is labeled correctly (was incorrectly displayed as "ABSENT" before Phase 12)
+- [x] `frontend/src/messages/en.json` / `zh.json` — Added `attendance.statusAbsent` ("Absent" / "缺勤") and `reports.statusAbnormal` ("ABNORMAL" / "異常")
 
 ## Phase 13: Monthly Punch Override & Team Reason Column
 
@@ -368,11 +375,11 @@ Employee can bulk-edit first clock-in and last clock-out times for any day of th
 
 | Layer | Tool | Actual / Est. | Target |
 |-------|------|--------------|--------|
-| Backend Unit | pytest | **201 passing** | 85% |
-| Backend Integration | pytest + httpx | **61 passing** | 80% |
+| Backend Unit | pytest | **207 passing** | 85% |
+| Backend Integration | pytest + httpx | **62 passing** | 80% |
 | Backend E2E | pytest | **5 passing** | Critical paths |
-| Frontend Unit | vitest + testing-library | **68 passing** | 80% |
+| Frontend Unit | vitest + testing-library | **34 passing** | 80% |
 | Frontend E2E | Playwright | **33 stubs** (test.fixme) | Critical paths |
-| **Total** | | **335 passing + 33 stubs** | **80%+** |
+| **Total** | | **308 passing + 33 stubs** | **80%+** |
 
-Note: Backend: 262 passing (201 unit + 61 integration). Frontend: 68 passing (27 from pre-existing + 7 new monthly-override; 41 pre-existing failures from Next.js version migration unrelated to Phase 13). Total: 262 backend + 68 frontend = 330 code tests + 5 E2E = 335.
+Note: Backend: 268 passing (207 unit + 61 integration + 5 e2e; +6 new Phase 12 tests). Frontend: 34 passing (27 pre-existing + 7 monthly-override); 41 pre-existing failures from Next.js version migration remain unrelated to Phase 12. Total: 268 backend + 34 frontend = 302 code tests + 5 E2E counted inside backend.

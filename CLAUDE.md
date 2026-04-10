@@ -81,7 +81,7 @@ frontend/src/
 16. **Single punch = clock-in** — A single punch is always treated as a clock-in. If it's past the grace deadline, status is LATE; if on time, status is NORMAL (not ABNORMAL). If an employee forgot to clock in earlier, the manager override flow covers that case. The summary is regenerated when the second punch (clock-out) arrives.
 17. **Department management** — Pre-set departments stored in `system_config` table (key `departments`). HR+ manages via admin UI. Employee create/edit forms use dropdown (not free text).
 18. **AttendanceStatus enum** — 5 values: `NORMAL`, `LATE`, `EARLY_LEAVE`, `LATE_AND_EARLY_LEAVE`, `ABNORMAL`. All status pages (attendance history, team, reports) display localized status badges. Shift time validation rejects `shift_end_time <= shift_start_time`.
-19. **No-punch workdays are invisible** — Currently, if an employee doesn't punch on a workday, no summary is generated and they don't appear in reports. An `ABSENT` status is planned (Phase 12) but blocked on HR confirming workday rules (Mon-Fri? holidays? per-employee schedules?) and generation timing (end-of-day job vs. retroactive).
+19. **ABSENT status for no-punch workdays** — When ADMIN triggers `POST /api/reports/generate` for a date, `generate_all_summaries()` creates `ABSENT` summaries for every employee with no punches *if* that date is a workday per the cached Taiwan calendar (falling back to Mon-Fri when no calendar data is cached). Holidays, weekends, and 補班 non-workdays never generate ABSENT summaries. ABSENT rows have `first_clock_in=NULL` and `last_clock_out=NULL`. HR fixes false ABSENTs via Monthly Punch Override, which upserts the summary to the calculated status (NORMAL/LATE/etc).
 20. **Monthly punch override** — Employees can bulk-edit their first clock-in and last clock-out times for any day of the month via a dashboard quick action. Overrides take effect immediately (no approval workflow). Original raw punch records in `attendance_logs` are preserved for HR/Manager audit. Employees can also pre-fill clock-in/clock-out for future days (end-of-month salary settlement). Overrides create new entries in `attendance_logs` with `is_overridden=True`; daily summaries are recalculated after each save.
 21. **Team page reason column** — `/api/reports/daily` includes `reason` field (joined from `attendance_reasons`). Team page displays reason text next to status for HR/Manager review.
 22. **Taiwan workday calendar** — Auto-fetched from ruyut/TaiwanCalendar CDN (sourced from 行政院人事行政總處), cached in `system_config` table (key `workday_calendar_{year}`). Falls back to Mon-Fri if fetch fails. HR can manually refresh via admin panel ("更新全年行事曆"). Used by monthly override page. Distinguishes workdays, holidays, weekends, and 補班 (make-up workdays).
@@ -177,7 +177,7 @@ See `TODO.md` for detailed progress tracking.
 | 9 | Bug Fixes & Enhancements (Date Range, WebAuthn Frontend, Navigation) | — | Done |
 | 10 | Meeting Requirements (Tardiness, Reasons, Grace Period, Export) | — | Done |
 | 11 | Bug Fixes & Admin Enhancements (Departments, Location Display, Status Fixes) | — | Done |
-| 12 | Future Enhancements (Absent Status Tracking) | — | Pending HR |
+| 12 | Absent Status Tracking (Taiwan calendar integration) | 6 | Done |
 | 13 | Monthly Punch Override & Team Reason Column | 44 | Done |
 
-**Current test count: 262 backend + 68 frontend = 330 passing + 33 Playwright E2E stubs**
+**Current test count: 268 backend + 34 frontend = 302 passing + 33 Playwright E2E stubs + 41 pre-existing frontend failures (Next.js migration)**

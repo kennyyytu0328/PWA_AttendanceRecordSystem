@@ -96,6 +96,7 @@
     "statusEarlyLeave": "早退",
     "statusLateAndEarlyLeave": "遲到且早退",
     "statusAbnormal": "異常",
+    "statusAbsent": "缺勤",
     "wfo": "辦公室",
     "wfh": "居家辦公"
   },
@@ -228,6 +229,7 @@
     "statusLate": "遲到",
     "statusEarlyLeave": "早退",
     "statusLateAndEarlyLeave": "遲到且早退",
+    "statusAbnormal": "異常",
     "statusAbsent": "缺勤"
   },
   "monthlyOverride": {

@@ -4,7 +4,13 @@ export type Role = "EMPLOYEE" | "MANAGER" | "HR" | "ADMIN";
 
 export type WorkMode = "OFFICE" | "WFH";
 
-export type AttendanceStatus = "NORMAL" | "LATE" | "EARLY_LEAVE" | "LATE_AND_EARLY_LEAVE" | "ABNORMAL";
+export type AttendanceStatus =
+  | "NORMAL"
+  | "LATE"
+  | "EARLY_LEAVE"
+  | "LATE_AND_EARLY_LEAVE"
+  | "ABNORMAL"
+  | "ABSENT";
 
 // ---------------------------------------------------------------------------
 // Employee

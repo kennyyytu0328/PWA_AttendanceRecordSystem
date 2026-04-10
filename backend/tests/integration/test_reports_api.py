@@ -248,3 +248,28 @@ class TestGenerateSummary:
         )
 
         assert resp.status_code == 403
+
+    async def test_generate_summaries_includes_absent_count(
+        self, client: AsyncClient
+    ):
+        """Phase 12: generated_count reflects both punched and ABSENT summaries."""
+        token = _make_token("EMP099", Role.ADMIN.value)
+        mock_summaries = [
+            _make_summary(emp_id="EMP001", status=AttendanceStatus.NORMAL),
+            _make_summary(emp_id="EMP002", status=AttendanceStatus.ABSENT),
+            _make_summary(emp_id="EMP003", status=AttendanceStatus.ABSENT),
+        ]
+
+        with patch(
+            "app.routers.reports.reporting_service.generate_all_summaries",
+            new_callable=AsyncMock,
+            return_value=mock_summaries,
+        ):
+            resp = await client.post(
+                "/api/reports/generate",
+                params={"date": "2026-03-18"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["generated_count"] == 3

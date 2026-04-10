@@ -19,6 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.daily_attendance_summary import AttendanceStatus, DailyAttendanceSummary
 from app.repositories import attendance_repository, employee_repository, summary_repository
 from app.repositories import system_config_repository
+from app.utils.taiwan_calendar import (
+    DayInfo,
+    is_workday_from_data,
+    parse_calendar_json,
+)
 
 DEFAULT_GRACE_MINUTES = 5
 
@@ -131,21 +136,58 @@ async def generate_daily_summary(
     return summary
 
 
+async def _load_calendar_for_year(
+    session: AsyncSession, year: int
+) -> list[DayInfo]:
+    """Load cached Taiwan workday calendar for a year, or empty list if none."""
+    cached = await system_config_repository.get_workday_calendar(session, year)
+    if cached is None:
+        return []
+    raw_entries = cached.get("entries", []) if isinstance(cached, dict) else []
+    return parse_calendar_json(raw_entries)
+
+
 async def generate_all_summaries(
     session: AsyncSession,
     date: datetime.date,
 ) -> list[DailyAttendanceSummary]:
     """Generate daily summaries for every employee on *date*.
 
-    Employees with no punches are silently skipped.
+    Phase 12 — ABSENT tracking:
+    * Employees who punched get a NORMAL/LATE/etc. summary (unchanged).
+    * On workdays, employees who did NOT punch get an ABSENT summary.
+    * On holidays / weekends (per Taiwan calendar, fallback Mon-Fri),
+      non-punching employees are silently skipped — no ABSENT generation.
     """
     employees = await employee_repository.find_all(session, skip=0, limit=10000)
 
     summaries: list[DailyAttendanceSummary] = []
+    punched_emp_ids: set[str] = set()
+
     for emp in employees:
         summary = await generate_daily_summary(session, emp.emp_id, date)
         if summary is not None:
             summaries.append(summary)
+            punched_emp_ids.add(emp.emp_id)
+
+    # Determine workday status via cached Taiwan calendar (fallback Mon-Fri)
+    calendar_data = await _load_calendar_for_year(session, date.year)
+    if not is_workday_from_data(calendar_data, date):
+        return summaries
+
+    # Generate ABSENT summaries for employees who did not punch
+    for emp in employees:
+        if emp.emp_id in punched_emp_ids:
+            continue
+        absent_summary = await summary_repository.upsert_summary(
+            session,
+            emp_id=emp.emp_id,
+            date=date,
+            first_clock_in=None,
+            last_clock_out=None,
+            status=AttendanceStatus.ABSENT,
+        )
+        summaries.append(absent_summary)
 
     return summaries
 

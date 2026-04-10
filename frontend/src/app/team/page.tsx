@@ -51,7 +51,7 @@ export default function TeamPage() {
   const canAccess = MANAGER_ROLES.includes(role);
 
   const [logs, setLogs] = useState<readonly AttendanceLog[]>([]);
-  const [summaryMap, setSummaryMap] = useState<Readonly<Record<string, string>>>({});
+  const [summaryMap, setSummaryMap] = useState<Readonly<Record<string, { status: string; reason?: string }>>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [startDate, setStartDate] = useState(todayString);
@@ -69,14 +69,14 @@ export default function TeamPage() {
             : `/api/attendance/team?${params.toString()}`;
         const [data, summaries] = await Promise.all([
           apiClient.get<AttendanceLog[]>(endpoint),
-          apiClient.get<{ emp_id: string; date: string; status: string }[]>(
+          apiClient.get<{ emp_id: string; date: string; status: string; reason?: string }[]>(
             `/api/reports/daily?start_date=${start}&end_date=${end}`,
-          ).catch(() => [] as { emp_id: string; date: string; status: string }[]),
+          ).catch(() => [] as { emp_id: string; date: string; status: string; reason?: string }[]),
         ]);
         setLogs(data);
-        const map: Record<string, string> = {};
+        const map: Record<string, { status: string; reason?: string }> = {};
         for (const s of summaries) {
-          map[`${s.emp_id}_${s.date}`] = s.status;
+          map[`${s.emp_id}_${s.date}`] = { status: s.status, reason: s.reason };
         }
         setSummaryMap(map);
       } catch (err) {
@@ -206,6 +206,7 @@ export default function TeamPage() {
                   <th className="px-4 py-3 font-medium text-gray-600">{t("team.workMode")}</th>
                   <th className="px-4 py-3 font-medium text-gray-600">{t("team.location")}</th>
                   <th className="px-4 py-3 font-medium text-gray-600">{t("team.status")}</th>
+                  <th className="px-4 py-3 font-medium text-gray-600">{t("team.reason")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -230,12 +231,17 @@ export default function TeamPage() {
                       {log.latitude.toFixed(4)}, {log.longitude.toFixed(4)}
                     </td>
                     <td className="px-4 py-3">
-                      {isFirstOfGroup && <StatusBadge status={summaryMap[empDate]} />}
+                      {isFirstOfGroup && <StatusBadge status={summaryMap[empDate]?.status} />}
                       {log.is_overridden && (
                         <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
                           {t("team.overridden")}
                         </span>
                       )}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-600">
+                      {isFirstOfGroup && summaryMap[empDate]?.reason
+                        ? summaryMap[empDate].reason
+                        : null}
                     </td>
                   </tr>
                   );
@@ -264,6 +270,7 @@ function StatusBadge({ status }: { readonly status: string | undefined }) {
     EARLY_LEAVE: { color: "bg-amber-100 text-amber-700", label: t("attendance.statusEarlyLeave") },
     LATE_AND_EARLY_LEAVE: { color: "bg-red-100 text-red-700", label: t("attendance.statusLateAndEarlyLeave") },
     ABNORMAL: { color: "bg-gray-100 text-gray-600", label: t("attendance.statusAbnormal") },
+    ABSENT: { color: "bg-red-100 text-red-700", label: t("attendance.statusAbsent") },
   };
 
   const c = config[status] ?? { color: "bg-gray-100 text-gray-600", label: status };

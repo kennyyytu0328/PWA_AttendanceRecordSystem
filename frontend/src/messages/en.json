@@ -96,6 +96,7 @@
     "statusEarlyLeave": "Early Leave",
     "statusLateAndEarlyLeave": "Late & Early Leave",
     "statusAbnormal": "Abnormal",
+    "statusAbsent": "Absent",
     "wfo": "WFO",
     "wfh": "WFH"
   },
@@ -228,6 +229,7 @@
     "statusLate": "LATE",
     "statusEarlyLeave": "EARLY_LEAVE",
     "statusLateAndEarlyLeave": "LATE & EARLY LEAVE",
+    "statusAbnormal": "ABNORMAL",
     "statusAbsent": "ABSENT"
   },
   "monthlyOverride": {

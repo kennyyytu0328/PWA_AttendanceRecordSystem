@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.middleware.auth_middleware import require_role
 from app.models.employee import Role
+from app.repositories import reason_repository
 from app.services import reporting_service
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
@@ -34,6 +35,10 @@ async def get_daily_report(
         status_filter=status,
     )
 
+    summary_ids = [s.id for s in summaries if s.id is not None]
+    reasons = await reason_repository.find_by_summary_ids(session, summary_ids)
+    reason_map = {r.summary_id: r.reason for r in reasons}
+
     return [
         {
             "id": s.id,
@@ -46,6 +51,7 @@ async def get_daily_report(
                 s.last_clock_out.isoformat() if s.last_clock_out else None
             ),
             "status": s.status.value,
+            "reason": reason_map.get(s.id),
         }
         for s in summaries
     ]

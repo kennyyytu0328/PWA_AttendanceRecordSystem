@@ -311,7 +311,9 @@ class TestFullReportingFlow:
         json_data = json_export_resp.json()
         assert isinstance(json_data, list)
         assert len(json_data) >= 1
-        assert json_data[0]["emp_id"] == "EMP001"
+        # Phase 12: other users (ADMIN/HR/MANAGER) may now get ABSENT summaries
+        # on workdays, so don't rely on sort order — find EMP001 specifically.
+        assert any(row["emp_id"] == "EMP001" for row in json_data)
 
         # Step 6: HR exports as CSV
         csv_export_resp = await client.get(

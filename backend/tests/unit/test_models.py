@@ -264,7 +264,8 @@ async def test_daily_attendance_summary_fields(db_session):
     assert AttendanceStatus.EARLY_LEAVE.value == "EARLY_LEAVE"
     assert AttendanceStatus.LATE_AND_EARLY_LEAVE.value == "LATE_AND_EARLY_LEAVE"
     assert AttendanceStatus.ABNORMAL.value == "ABNORMAL"
-    assert len(AttendanceStatus) == 5
+    assert AttendanceStatus.ABSENT.value == "ABSENT"
+    assert len(AttendanceStatus) == 6
 
 
 # ---------- 8. Employee -> Authenticator relationship (via FK) ----------

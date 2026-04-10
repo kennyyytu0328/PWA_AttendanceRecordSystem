@@ -31,6 +31,20 @@ async def find_by_summary_id(
     return result.scalar_one_or_none()
 
 
+async def find_by_summary_ids(
+    session: AsyncSession,
+    summary_ids: list[int],
+) -> list[AttendanceReason]:
+    """Return reasons for multiple summary IDs."""
+    if not summary_ids:
+        return []
+    statement = select(AttendanceReason).where(
+        AttendanceReason.summary_id.in_(summary_ids)
+    )
+    result = await session.execute(statement)
+    return list(result.scalars().all())
+
+
 async def find_by_employee(
     session: AsyncSession,
     emp_id: str,
