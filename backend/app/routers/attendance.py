@@ -116,21 +116,43 @@ async def get_history(
 async def get_my_summaries(
     start_date: datetime.date = Query(...),
     end_date: datetime.date = Query(...),
+    emp_id: str | None = Query(default=None),
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
-    """Return daily attendance summaries for the authenticated employee."""
-    from app.services import reporting_service
+    """Return daily attendance summaries.
+
+    Employees see only their own summaries. HR+ may pass ``emp_id`` to
+    view another employee's data (used by the monthly override page).
+    """
+    from app.services import permission_service, reporting_service
+
+    target_emp_id = user["sub"]
+    if emp_id and emp_id != user["sub"]:
+        if not permission_service.has_permission(
+            Role(user["role"]), permission_service.VIEW_ALL_ATTENDANCE
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view other employees' summaries",
+            )
+        target_emp_id = emp_id
 
     summaries = await reporting_service.get_daily_report(
         session,
         start_date=start_date,
         end_date=end_date,
-        emp_id=user["sub"],
+        emp_id=target_emp_id,
     )
     return [
         {
             "date": s.date.isoformat(),
+            "first_clock_in": (
+                s.first_clock_in.isoformat() if s.first_clock_in else None
+            ),
+            "last_clock_out": (
+                s.last_clock_out.isoformat() if s.last_clock_out else None
+            ),
             "status": s.status.value,
         }
         for s in summaries
