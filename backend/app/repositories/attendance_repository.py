@@ -7,7 +7,7 @@ by appending new entries with ``is_overridden=True``.
 
 import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.attendance_log import AttendanceLog
@@ -126,3 +126,29 @@ async def find_last_clock_out(
     )
     result = await session.execute(stmt)
     return result.scalars().first()
+
+
+async def mark_overridden_by_employee_and_date(
+    session: AsyncSession,
+    emp_id: str,
+    date: datetime.date,
+) -> int:
+    """Mark all non-overridden logs for an employee on a date as overridden.
+
+    Returns the count of updated rows. This is the ONE exception to immutability:
+    we flip is_overridden=True on old entries, but never delete or modify content.
+    """
+    start = datetime.datetime.combine(date, datetime.time.min)
+    end = datetime.datetime.combine(date, datetime.time.max)
+    stmt = (
+        update(AttendanceLog)
+        .where(
+            AttendanceLog.emp_id == emp_id,
+            AttendanceLog.timestamp >= start,
+            AttendanceLog.timestamp <= end,
+            AttendanceLog.is_overridden == False,  # noqa: E712
+        )
+        .values(is_overridden=True)
+    )
+    result = await session.execute(stmt)
+    return result.rowcount
