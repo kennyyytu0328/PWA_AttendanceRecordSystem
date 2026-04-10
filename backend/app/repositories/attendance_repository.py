@@ -7,7 +7,7 @@ by appending new entries with ``is_overridden=True``.
 
 import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.attendance_log import AttendanceLog
@@ -138,6 +138,8 @@ async def mark_overridden_by_employee_and_date(
     Returns the count of updated rows. This is the ONE exception to immutability:
     we flip is_overridden=True on old entries, but never delete or modify content.
     """
+    from sqlalchemy import update
+
     start = datetime.datetime.combine(date, datetime.time.min)
     end = datetime.datetime.combine(date, datetime.time.max)
     stmt = (
