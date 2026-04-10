@@ -1,5 +1,7 @@
 # TODO — GoGoFresh Attendance System (TDD Implementation)
 
+**Status:** All phases 0-13 complete. 268 backend tests + 34 frontend tests passing.
+
 ## Phase 0: Project Scaffolding & Test Infrastructure -- DONE
 
 - [x] Create `backend/` with `pyproject.toml` (webauthn, passlib[bcrypt], python-jose, etc.)
@@ -333,7 +335,7 @@
 - [x] `frontend/src/app/attendance/page.tsx`, `team/page.tsx`, `reports/page.tsx` — `StatusBadge` handles `ABSENT` (red background) with proper i18n label; reports page now has both `ABNORMAL` and `ABSENT` filter options, and `ABNORMAL` is labeled correctly (was incorrectly displayed as "ABSENT" before Phase 12)
 - [x] `frontend/src/messages/en.json` / `zh.json` — Added `attendance.statusAbsent` ("Absent" / "缺勤") and `reports.statusAbnormal` ("ABNORMAL" / "異常")
 
-## Phase 13: Monthly Punch Override & Team Reason Column
+## Phase 13: Monthly Punch Override & Team Reason Column -- DONE (44 tests)
 
 ### 13A: Team Page Reason Column -- DONE
 - [x] `backend/app/repositories/reason_repository.py` — Added `find_by_summary_ids()` for bulk reason lookup
