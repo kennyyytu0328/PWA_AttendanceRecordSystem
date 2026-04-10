@@ -819,8 +819,17 @@ function CalendarStatusSection() {
     setRefreshingYear(year);
     setMessage(null);
     try {
-      await apiClient.post(`/api/config/workdays/refresh?year=${year}`, {});
-      setMessage({ type: "success", text: t("calendarStatus.refreshSuccess") });
+      const result = await apiClient.post<{ year: number; count: number; message: string }>(
+        `/api/config/workdays/refresh?year=${year}`,
+        {},
+      );
+      setMessage({
+        type: "success",
+        text: t("calendarStatus.refreshSuccess").replace(
+          "{count}",
+          String(result.count),
+        ),
+      });
       await fetchStatus();
     } catch (err) {
       const msg = err instanceof Error ? err.message : t("calendarStatus.refreshError");
