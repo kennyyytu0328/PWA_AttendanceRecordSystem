@@ -1,5 +1,6 @@
-"""System config router — office location and general config CRUD."""
+"""System config router — office location, workday calendar, and general config CRUD."""
 
+import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,6 +11,11 @@ from app.middleware.auth_middleware import get_current_user, require_role
 from app.models.employee import Role
 from app.repositories import system_config_repository
 from app.schemas.system_config import SystemConfigResponse
+from app.utils.taiwan_calendar import (
+    fetch_calendar_from_cdn,
+    get_month_info_from_data,
+    parse_calendar_json,
+)
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -85,6 +91,109 @@ async def set_departments(
         updated_by=user["sub"],
     )
     return {"departments": unique}
+
+
+# ---------------------------------------------------------------------------
+# Workday calendar — refresh & status (HR+), get (any auth)
+# ---------------------------------------------------------------------------
+@router.post("/workdays/refresh")
+async def refresh_workdays(
+    year: int,
+    user: dict = require_role(Role.HR),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Re-fetch workday calendar from CDN for a given year. HR+ only."""
+    data = await fetch_calendar_from_cdn(year)
+    raw_entries = [
+        {
+            "date": d.date.strftime("%Y%m%d"),
+            "week": d.weekday_zh,
+            "isHoliday": d.is_holiday,
+            "description": d.description,
+        }
+        for d in data
+    ]
+    await system_config_repository.set_workday_calendar(
+        session, year, raw_entries, updated_by=user["sub"]
+    )
+    return {"year": year, "count": len(data), "message": "Calendar refreshed"}
+
+
+@router.get("/workdays/status")
+async def get_workdays_status(
+    user: dict = require_role(Role.HR),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Get status of loaded workday calendars. HR+ only."""
+    current_year = datetime.datetime.now(datetime.UTC).year
+    years_to_check = range(current_year - 1, current_year + 2)
+    calendars: list[dict[str, Any]] = []
+
+    for y in years_to_check:
+        config = await system_config_repository.get_by_key(
+            session, f"workday_calendar_{y}"
+        )
+        if config is not None:
+            entry_count = len(config.value.get("entries", [])) if config.value else 0
+            calendars.append({
+                "year": y,
+                "loaded": True,
+                "entry_count": entry_count,
+                "updated_at": config.updated_at.isoformat() if config.updated_at else None,
+                "updated_by": config.updated_by,
+            })
+        else:
+            calendars.append({"year": y, "loaded": False})
+
+    return {"calendars": calendars}
+
+
+@router.get("/workdays")
+async def get_workdays(
+    year: int,
+    month: int,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Get day-by-day workday info for a month. Auto-fetches from CDN if not cached."""
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="Invalid month")
+
+    cached = await system_config_repository.get_workday_calendar(session, year)
+    if cached is not None:
+        raw_entries = cached.get("entries", [])
+        data = parse_calendar_json(raw_entries)
+    else:
+        data = await fetch_calendar_from_cdn(year)
+        if data:
+            raw_entries = [
+                {
+                    "date": d.date.strftime("%Y%m%d"),
+                    "week": d.weekday_zh,
+                    "isHoliday": d.is_holiday,
+                    "description": d.description,
+                }
+                for d in data
+            ]
+            await system_config_repository.set_workday_calendar(
+                session, year, raw_entries, updated_by=user["sub"]
+            )
+
+    month_info = get_month_info_from_data(data, year, month)
+    return {
+        "year": year,
+        "month": month,
+        "days": [
+            {
+                "date": str(d.date),
+                "weekday_zh": d.weekday_zh,
+                "is_holiday": d.is_holiday,
+                "description": d.description,
+                "is_makeup_workday": d.is_makeup_workday,
+            }
+            for d in month_info
+        ],
+    }
 
 
 # ---------------------------------------------------------------------------
