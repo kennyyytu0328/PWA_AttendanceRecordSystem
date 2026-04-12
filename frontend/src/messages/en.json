@@ -252,6 +252,8 @@
     "saveSuccess": "Punch overrides saved successfully. {count} days updated.",
     "saveError": "Failed to save overrides. Please try again.",
     "noChanges": "No changes to save.",
+    "filterDepartment": "Department",
+    "allDepartments": "All Departments",
     "selectEmployee": "Select Employee",
     "previousMonth": "Previous Month",
     "nextMonth": "Next Month"

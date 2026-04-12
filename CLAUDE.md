@@ -85,7 +85,7 @@ frontend/src/
 20. **Monthly punch override** — Employees can bulk-edit their first clock-in and last clock-out times for any day of the month via a dashboard quick action. Overrides take effect immediately (no approval workflow). Original raw punch records in `attendance_logs` are preserved for HR/Manager audit. Employees can also pre-fill clock-in/clock-out for future days (end-of-month salary settlement). Overrides create new entries in `attendance_logs` with `is_overridden=True`; daily summaries are recalculated after each save.
 21. **Team page reason column** — `/api/reports/daily` includes `reason` field (joined from `attendance_reasons`). Team page displays reason text next to status for HR/Manager review.
 22. **Taiwan workday calendar** — Auto-fetched from ruyut/TaiwanCalendar CDN (sourced from 行政院人事行政總處), cached in `system_config` table (key `workday_calendar_{year}`). Falls back to Mon-Fri if fetch fails. HR can manually refresh via admin panel ("更新全年行事曆"). Used by monthly override page. Distinguishes workdays, holidays, weekends, and 補班 (make-up workdays).
-23. **Monthly punch override** — Employees bulk-edit clock-in/clock-out for any workday of a month via `/dashboard/monthly-override`. HR+ can override any employee. Overrides mark old logs as `is_overridden=True`, create new logs, and recalculate daily summaries. No approval workflow. Supports pre-filling future days for salary settlement.
+23. **Monthly punch override** — Employees bulk-edit clock-in/clock-out for any workday of a month via `/dashboard/monthly-override`. HR+ can override any employee (with department filter + employee selector). Overrides mark old logs as `is_overridden=True`, create new logs, and recalculate daily summaries. No approval workflow. Supports pre-filling future days for salary settlement.
 
 ## Development Methodology
 
@@ -179,5 +179,6 @@ See `TODO.md` for detailed progress tracking.
 | 11 | Bug Fixes & Admin Enhancements (Departments, Location Display, Status Fixes) | — | Done |
 | 12 | Absent Status Tracking (Taiwan calendar integration) | 6 | Done |
 | 13 | Monthly Punch Override & Team Reason Column | 44 | Done |
+| 14 | UX Enhancements | — | In Progress |
 
 **Current test count: 268 backend + 34 frontend = 302 passing + 33 Playwright E2E stubs + 41 pre-existing frontend failures (Next.js migration)**

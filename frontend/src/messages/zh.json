@@ -252,6 +252,8 @@
     "saveSuccess": "打卡修改已儲存成功，共更新 {count} 天。",
     "saveError": "儲存失敗，請重試。",
     "noChanges": "沒有變更需要儲存。",
+    "filterDepartment": "部門",
+    "allDepartments": "所有部門",
     "selectEmployee": "選擇員工",
     "previousMonth": "上個月",
     "nextMonth": "下個月"

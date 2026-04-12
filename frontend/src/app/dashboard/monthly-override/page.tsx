@@ -135,10 +135,28 @@ export default function MonthlyOverridePage() {
   const [rows, setRows] = useState<readonly DayRow[]>([]);
   const [originalRows, setOriginalRows] = useState<readonly DayRow[]>([]);
   const [employees, setEmployees] = useState<readonly Employee[]>([]);
+  const [selectedDepartment, setSelectedDepartment] = useState<string>("");
   const [selectedEmpId, setSelectedEmpId] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
+
+  // Derived: unique departments & filtered employees
+  const departments = Array.from(
+    new Set(employees.map((emp) => emp.department).filter(Boolean)),
+  ).sort();
+  const filteredEmployees = selectedDepartment
+    ? employees.filter((emp) => emp.department === selectedDepartment)
+    : employees;
+
+  // Reset employee selection when department changes
+  const handleDepartmentChange = useCallback(
+    (dept: string) => {
+      setSelectedDepartment(dept);
+      setSelectedEmpId("");
+    },
+    [],
+  );
 
   // Navigate months
   const goToPreviousMonth = useCallback(() => {
@@ -366,28 +384,51 @@ export default function MonthlyOverridePage() {
             </button>
           </div>
 
-          {/* Employee Selector (HR+ only) */}
+          {/* Department & Employee Selector (HR+ only) */}
           {isHrPlus && (
-            <div className="flex items-center gap-2">
-              <label
-                htmlFor="emp-selector"
-                className="text-sm font-medium text-gray-700"
-              >
-                {t("monthlyOverride.selectEmployee")}
-              </label>
-              <select
-                id="emp-selector"
-                value={selectedEmpId}
-                onChange={(e) => setSelectedEmpId(e.target.value)}
-                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-2 focus:ring-[#4ec6c1] focus:outline-none"
-              >
-                <option value="">--</option>
-                {employees.map((emp) => (
-                  <option key={emp.emp_id} value={emp.emp_id}>
-                    {emp.emp_id} - {emp.name}
-                  </option>
-                ))}
-              </select>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="dept-selector"
+                  className="text-sm font-medium text-gray-700"
+                >
+                  {t("monthlyOverride.filterDepartment")}
+                </label>
+                <select
+                  id="dept-selector"
+                  value={selectedDepartment}
+                  onChange={(e) => handleDepartmentChange(e.target.value)}
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-2 focus:ring-[#4ec6c1] focus:outline-none"
+                >
+                  <option value="">{t("monthlyOverride.allDepartments")}</option>
+                  {departments.map((dept) => (
+                    <option key={dept} value={dept}>
+                      {dept}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="emp-selector"
+                  className="text-sm font-medium text-gray-700"
+                >
+                  {t("monthlyOverride.selectEmployee")}
+                </label>
+                <select
+                  id="emp-selector"
+                  value={selectedEmpId}
+                  onChange={(e) => setSelectedEmpId(e.target.value)}
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-2 focus:ring-[#4ec6c1] focus:outline-none"
+                >
+                  <option value="">--</option>
+                  {filteredEmployees.map((emp) => (
+                    <option key={emp.emp_id} value={emp.emp_id}>
+                      {emp.emp_id} - {emp.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           )}
 

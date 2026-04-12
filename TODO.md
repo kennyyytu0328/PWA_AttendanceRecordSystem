@@ -373,6 +373,12 @@ Employee can bulk-edit first clock-in and last clock-out times for any day of th
 - [x] `backend/tests/integration/test_bulk_override_api.py` — 5 tests (success, HR for other, unauth, empty entries, permission error)
 - [x] `frontend/__tests__/unit/app/monthly-override.test.tsx` — 7 tests (page render, calendar table, holidays, save flow, HR selector)
 
+## Phase 14: UX Enhancements -- In Progress
+
+### 14A: Monthly Override Department Filter -- DONE
+- [x] `frontend/src/app/dashboard/monthly-override/page.tsx` — Added department filter dropdown (HR+ only) before employee selector; selecting a department filters the employee list; changing department resets employee selection
+- [x] `frontend/src/messages/en.json` / `zh.json` — Added `monthlyOverride.filterDepartment` and `monthlyOverride.allDepartments` i18n keys
+
 ## Test Coverage Summary
 
 | Layer | Tool | Actual / Est. | Target |
