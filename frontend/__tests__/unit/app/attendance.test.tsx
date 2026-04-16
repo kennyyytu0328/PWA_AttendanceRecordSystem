@@ -48,7 +48,7 @@ function buildLog(overrides: Partial<AttendanceLog> = {}): AttendanceLog {
     id: 1,
     emp_id: "EMP001",
     timestamp: "2026-03-19T09:00:00Z",
-    work_mode: "WFO" as WorkMode,
+    work_mode: "OFFICE" as WorkMode,
     latitude: 13.7563,
     longitude: 100.5018,
     accuracy: 10,
@@ -60,16 +60,23 @@ function buildLog(overrides: Partial<AttendanceLog> = {}): AttendanceLog {
 }
 
 const SAMPLE_LOGS: readonly AttendanceLog[] = [
-  buildLog({ id: 1, timestamp: "2026-03-19T09:00:00Z", work_mode: "WFO" }),
+  buildLog({ id: 1, timestamp: "2026-03-19T09:00:00Z", work_mode: "OFFICE" }),
   buildLog({ id: 2, timestamp: "2026-03-18T09:15:00Z", work_mode: "WFH" }),
   buildLog({
     id: 3,
     timestamp: "2026-03-17T09:30:00Z",
-    work_mode: "WFO",
+    work_mode: "OFFICE",
     is_overridden: true,
     override_reason: "Manager correction",
   }),
 ];
+
+function mockAttendanceFetch(logs: readonly AttendanceLog[]) {
+  mockGet.mockImplementation((url: string) => {
+    if (url.includes("/api/attendance/summaries")) return Promise.resolve([]);
+    return Promise.resolve([...logs]);
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Lazy imports (after mocks are registered)
@@ -98,7 +105,7 @@ describe("Attendance History Page", () => {
   });
 
   it("renders attendance history heading", async () => {
-    mockGet.mockResolvedValueOnce([]);
+    mockAttendanceFetch([]);
 
     const { default: AttendancePage } = await importAttendancePage();
     render(<AttendancePage />);
@@ -119,7 +126,7 @@ describe("Attendance History Page", () => {
   });
 
   it("displays attendance records in a table", async () => {
-    mockGet.mockResolvedValueOnce([...SAMPLE_LOGS]);
+    mockAttendanceFetch(SAMPLE_LOGS);
 
     const { default: AttendancePage } = await importAttendancePage();
     render(<AttendancePage />);
@@ -135,7 +142,7 @@ describe("Attendance History Page", () => {
   });
 
   it("shows work mode badges with correct styling", async () => {
-    mockGet.mockResolvedValueOnce([...SAMPLE_LOGS]);
+    mockAttendanceFetch(SAMPLE_LOGS);
 
     const { default: AttendancePage } = await importAttendancePage();
     render(<AttendancePage />);
@@ -157,7 +164,7 @@ describe("Attendance History Page", () => {
   });
 
   it("shows empty state when no records found", async () => {
-    mockGet.mockResolvedValueOnce([]);
+    mockAttendanceFetch([]);
 
     const { default: AttendancePage } = await importAttendancePage();
     render(<AttendancePage />);
@@ -170,7 +177,7 @@ describe("Attendance History Page", () => {
   });
 
   it("shows override indicator for overridden entries", async () => {
-    mockGet.mockResolvedValueOnce([...SAMPLE_LOGS]);
+    mockAttendanceFetch(SAMPLE_LOGS);
 
     const { default: AttendancePage } = await importAttendancePage();
     render(<AttendancePage />);
@@ -183,7 +190,7 @@ describe("Attendance History Page", () => {
   });
 
   it("renders date filter inputs", async () => {
-    mockGet.mockResolvedValueOnce([]);
+    mockAttendanceFetch([]);
 
     const { default: AttendancePage } = await importAttendancePage();
     render(<AttendancePage />);

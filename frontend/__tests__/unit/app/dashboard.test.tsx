@@ -153,14 +153,12 @@ describe("Dashboard Page", () => {
 
     const { default: DashboardPage } = await importDashboardPage();
 
-    render(<DashboardPage />);
+    const { container } = render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /punch/i })).toBeInTheDocument();
+      expect(container.querySelector('a[href="/punch"]')).not.toBeNull();
     });
-    expect(
-      screen.getByRole("link", { name: /attendance/i }),
-    ).toBeInTheDocument();
+    expect(container.querySelector('a[href="/attendance"]')).not.toBeNull();
   });
 
   it("MANAGER sees team attendance link", async () => {
@@ -173,12 +171,10 @@ describe("Dashboard Page", () => {
 
     const { default: DashboardPage } = await importDashboardPage();
 
-    render(<DashboardPage />);
+    const { container } = render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("link", { name: /team/i }),
-      ).toBeInTheDocument();
+      expect(container.querySelector('a[href="/team"]')).not.toBeNull();
     });
   });
 
@@ -188,14 +184,14 @@ describe("Dashboard Page", () => {
 
     const { default: DashboardPage } = await importDashboardPage();
 
-    render(<DashboardPage />);
+    const { container } = render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /punch/i })).toBeInTheDocument();
+      expect(container.querySelector('a[href="/punch"]')).not.toBeNull();
     });
 
-    expect(screen.queryByRole("link", { name: /team/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /report/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /config/i })).not.toBeInTheDocument();
+    expect(container.querySelector('a[href="/team"]')).toBeNull();
+    expect(container.querySelector('a[href="/reports"]')).toBeNull();
+    expect(container.querySelector('a[href="/admin"]')).toBeNull();
   });
 });

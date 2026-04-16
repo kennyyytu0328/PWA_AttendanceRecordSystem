@@ -44,7 +44,7 @@ function fakeJwt(payload: Record<string, unknown>): string {
   return `${header}.${body}.${sig}`;
 }
 
-const TEST_TOKEN = fakeJwt({ emp_id: "EMP001", role: "EMPLOYEE" });
+const TEST_TOKEN = fakeJwt({ sub: "EMP001", role: "EMPLOYEE" });
 
 // ---------------------------------------------------------------------------
 // Lazy imports (after mocks are registered)

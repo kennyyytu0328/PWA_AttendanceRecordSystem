@@ -1,6 +1,6 @@
 # TODO — GoGoFresh Attendance System (TDD Implementation)
 
-**Status:** All phases 0-13 complete. 268 backend tests + 34 frontend tests passing.
+**Status:** All phases 0-13 complete. 268 backend tests + 68 frontend tests passing.
 
 ## Phase 0: Project Scaffolding & Test Infrastructure -- DONE
 
@@ -379,6 +379,33 @@ Employee can bulk-edit first clock-in and last clock-out times for any day of th
 - [x] `frontend/src/app/dashboard/monthly-override/page.tsx` — Added department filter dropdown (HR+ only) before employee selector; selecting a department filters the employee list; changing department resets employee selection
 - [x] `frontend/src/messages/en.json` / `zh.json` — Added `monthlyOverride.filterDepartment` and `monthlyOverride.allDepartments` i18n keys
 
+### 14C: LAN Access for Dev Testing -- DONE
+Enable testing the dev server from other devices on the local subnet (phones, tablets) at `http://192.168.2.<host>:3000`.
+- [x] `frontend/next.config.ts` — Added `allowedDevOrigins: ["192.168.2.*"]` (unblocks Next.js HMR cross-origin guard). Note: DNS-segment wildcard, NOT CIDR — `192.168.2.0/24` does NOT work because Next.js splits on `.` and compares segments
+- [x] `backend/app/config.py` — Added `cors_origin_regex: str | None = r"http://192\.168\.\d+\.\d+:3000"` setting
+- [x] `backend/app/main.py` — Passed `allow_origin_regex=settings.cors_origin_regex` to `CORSMiddleware` (complements literal `allow_origins` list)
+- [x] Backend must be started with `uvicorn --host 0.0.0.0` to bind all interfaces (not just loopback)
+- [x] Known limitation: Fingerprint/WebAuthn will NOT work over LAN HTTP — browsers mandate HTTPS for any origin other than `localhost`. Password login works fine.
+
+### 14D: Production Deployment Templates & Guide -- DONE
+Created reusable templates for deploying this PWA to a prod environment with HTTPS, domain-bound WebAuthn, and Docker Compose.
+- [x] `backend/.env.production.example` — Template with placeholders for `DATABASE_URL`, `SECRET_KEY` (via `openssl rand -hex 32`), `CORS_ORIGINS`, `WEBAUTHN_RP_ID` (bare host), `WEBAUTHN_ORIGIN` (https)
+- [x] `frontend/.env.production.example` — `NEXT_PUBLIC_API_URL` template. Flagged that `NEXT_PUBLIC_*` is baked into the JS bundle at `next build` time — rebuild required on change
+- [x] `frontend/Dockerfile.prod` — Multi-stage build: `deps` → `builder` (runs `npm run build` with `NEXT_PUBLIC_API_URL` as build-arg) → `runner` (slim node:22-alpine, non-root user, `npm start`). Replaces the dev Dockerfile which runs `npm run dev`
+- [x] `docker-compose.prod.yml` — No bind mounts, no `--reload`, `--workers 4` for uvicorn, postgres NOT published to host (internal-only via `expose:`), `restart: unless-stopped`, builds frontend with `NEXT_PUBLIC_API_URL` build-arg
+- [x] `docs/PRODUCTION_DEPLOYMENT_GUIDE.md` — 11-section walkthrough: prerequisites, DNS/domain, secret generation, filling all 3 env files (backend/.env, frontend/.env.production, root compose `.env`), `alembic upgrade head`, inline Python snippet to create the initial ADMIN user (explicitly NOT running `seed.py` in prod because it ships weak passwords), Caddy vs nginx reverse proxy options with TLS termination, smoke-test curl commands, nightly pg_dump backup cron, upgrade flow, pre-flight checklist, troubleshooting table (7 common issues)
+- [x] `.gitignore` — Whitelisted `!.env.*.example` pattern so production templates are tracked (they match the `.env.*` ignore rule otherwise)
+
+### 14B: Frontend Test Migration Repair (41 pre-existing failures) -- DONE
+Post-i18n/Phase-9C/Phase-11G test drift — tests written in Phases 5/6 had not been updated after later refactors. Now 68/68 frontend unit tests green.
+- [x] `frontend/vitest.setup.ts` — Global `vi.mock("@/lib/i18n")` resolving real `en.json` translations (fixes ~35 "useTranslation must be used within an I18nProvider" errors across hooks and page tests)
+- [x] `frontend/vitest.setup.ts` — Global mock for `@/components/LanguageSwitcher` → null renderer
+- [x] `frontend/__tests__/unit/hooks/useWebAuthn.test.ts` — Updated 2 tests to match Phase 9C `authenticate()` API: returns `string | null` (token) instead of `boolean`; no longer stores token internally (caller uses `AuthContext.loginWithToken`); updated verify payload to spread `{...credential, emp_id}` (not `{credential, emp_id}`)
+- [x] `frontend/__tests__/unit/app/login.test.tsx` — JWT payload fake uses `sub` field (matches `decodeToken` which reads `payload.sub`) instead of `emp_id`
+- [x] `frontend/__tests__/unit/app/attendance.test.tsx` — Work mode mock values updated `"WFO"` → `"OFFICE"` (Phase 9A enum alignment); added mock for second parallel `GET /api/attendance/summaries` call (Phase 11F) via `mockImplementation`
+- [x] `frontend/__tests__/unit/app/admin.test.tsx` — `mockAdminApi()` helper returning properly-shaped payloads for all config endpoints (`/api/config/departments` → `{departments}`, `/api/config/office-location` → `{key, value}`, `/api/config/workdays/status` → `{calendars}`, `/api/config/grace-period` → `{minutes}`) — was crashing on `undefined.length`/`undefined.map` in DepartmentManagement and CalendarStatus sections
+- [x] `frontend/__tests__/unit/app/dashboard.test.tsx` — Switched from `getByRole("link", {name: /punch/i})` to `container.querySelector('a[href="/punch"]')` to avoid ambiguity with "Monthly Punch Override" NavLinkCard added in Phase 13B
+
 ## Test Coverage Summary
 
 | Layer | Tool | Actual / Est. | Target |
@@ -386,8 +413,8 @@ Employee can bulk-edit first clock-in and last clock-out times for any day of th
 | Backend Unit | pytest | **207 passing** | 85% |
 | Backend Integration | pytest + httpx | **62 passing** | 80% |
 | Backend E2E | pytest | **5 passing** | Critical paths |
-| Frontend Unit | vitest + testing-library | **34 passing** | 80% |
+| Frontend Unit | vitest + testing-library | **68 passing** | 80% |
 | Frontend E2E | Playwright | **33 stubs** (test.fixme) | Critical paths |
-| **Total** | | **308 passing + 33 stubs** | **80%+** |
+| **Total** | | **336 passing + 33 stubs** | **80%+** |
 
-Note: Backend: 268 passing (207 unit + 61 integration + 5 e2e; +6 new Phase 12 tests). Frontend: 34 passing (27 pre-existing + 7 monthly-override); 41 pre-existing failures from Next.js version migration remain unrelated to Phase 12. Total: 268 backend + 34 frontend = 302 code tests + 5 E2E counted inside backend.
+Note: Backend 268 (207 unit + 61 integration + 5 e2e). Frontend 68 (all green as of Phase 14B — repaired the 41 post-i18n/Phase-9C migration failures). Total code tests: 268 + 68 = 336.

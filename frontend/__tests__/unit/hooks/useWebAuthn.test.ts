@@ -153,7 +153,7 @@ describe("useWebAuthn", () => {
   });
 
   // ---- Test 5 ----
-  it("authenticate stores token on success", async () => {
+  it("authenticate returns access token on success", async () => {
     const tokenResponse = {
       access_token: "jwt-token-abc",
       token_type: "bearer",
@@ -165,12 +165,12 @@ describe("useWebAuthn", () => {
 
     const { result } = renderHook(() => useWebAuthn());
 
-    let success: boolean = false;
+    let token: string | null = null;
     await act(async () => {
-      success = await result.current.authenticate("EMP001");
+      token = await result.current.authenticate("EMP001");
     });
 
-    expect(success).toBe(true);
+    expect(token).toBe("jwt-token-abc");
     expect(result.current.state.error).toBeNull();
     expect(result.current.state.loading).toBe(false);
 
@@ -186,15 +186,12 @@ describe("useWebAuthn", () => {
     expect(mockPost).toHaveBeenNthCalledWith(
       2,
       "/api/auth/authenticate/verify",
-      { credential: fakeAuthResponse, emp_id: "EMP001" },
+      { ...fakeAuthResponse, emp_id: "EMP001" },
     );
-
-    // Verify token stored
-    expect(localStorage.getItem("access_token")).toBe("jwt-token-abc");
   });
 
   // ---- Test 6 ----
-  it("authenticate handles errors gracefully", async () => {
+  it("authenticate returns null on error", async () => {
     mockPost.mockResolvedValueOnce(fakeAuthOptions);
     mockStartAuthentication.mockRejectedValueOnce(
       new Error("Authenticator not found"),
@@ -202,16 +199,13 @@ describe("useWebAuthn", () => {
 
     const { result } = renderHook(() => useWebAuthn());
 
-    let success: boolean = true;
+    let token: string | null = "initial";
     await act(async () => {
-      success = await result.current.authenticate("EMP001");
+      token = await result.current.authenticate("EMP001");
     });
 
-    expect(success).toBe(false);
+    expect(token).toBeNull();
     expect(result.current.state.error).toBe("Authenticator not found");
     expect(result.current.state.loading).toBe(false);
-
-    // Verify token was NOT stored
-    expect(localStorage.getItem("access_token")).toBeNull();
   });
 });

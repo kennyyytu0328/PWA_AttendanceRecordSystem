@@ -104,9 +104,40 @@ describe("Admin Page", () => {
     mockPut.mockReset();
   });
 
+  function mockAdminApi(opts: {
+    employees?: readonly Employee[];
+    officeLocation?: OfficeLocation | null;
+    departments?: readonly string[];
+  } = {}) {
+    const employees = opts.employees ?? [];
+    const officeLocation = opts.officeLocation ?? null;
+    const departments = opts.departments ?? [];
+    mockGet.mockImplementation((path: string) => {
+      if (path.includes("/api/employees")) {
+        return Promise.resolve([...employees]);
+      }
+      if (path.includes("/api/config/office-location")) {
+        return Promise.resolve({ key: "office_location", value: officeLocation });
+      }
+      if (path.includes("/api/config/departments")) {
+        return Promise.resolve({ departments: [...departments] });
+      }
+      if (path.includes("/api/config/grace-period")) {
+        return Promise.resolve({ minutes: 5 });
+      }
+      if (path.includes("/api/config/workdays/status")) {
+        return Promise.resolve({ calendars: [] });
+      }
+      if (path.includes("/api/config")) {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve([]);
+    });
+  }
+
   it("renders admin panel heading", async () => {
     mockAuthUser("ADMIN");
-    mockGet.mockResolvedValue([]);
+    mockAdminApi();
 
     const { default: AdminPage } = await importAdminPage();
     render(<AdminPage />);
@@ -118,7 +149,7 @@ describe("Admin Page", () => {
 
   it("HR user sees employee management section", async () => {
     mockAuthUser("HR");
-    mockGet.mockResolvedValue([]);
+    mockAdminApi();
 
     const { default: AdminPage } = await importAdminPage();
     render(<AdminPage />);
@@ -130,7 +161,7 @@ describe("Admin Page", () => {
 
   it("HR user sees office location section", async () => {
     mockAuthUser("HR");
-    mockGet.mockResolvedValue([]);
+    mockAdminApi();
 
     const { default: AdminPage } = await importAdminPage();
     render(<AdminPage />);
@@ -142,7 +173,7 @@ describe("Admin Page", () => {
 
   it("ADMIN user sees system config section", async () => {
     mockAuthUser("ADMIN");
-    mockGet.mockResolvedValue([]);
+    mockAdminApi();
 
     const { default: AdminPage } = await importAdminPage();
     render(<AdminPage />);
@@ -166,15 +197,7 @@ describe("Admin Page", () => {
 
   it("shows employee list when loaded", async () => {
     mockAuthUser("HR");
-    mockGet.mockImplementation((path: string) => {
-      if (path.includes("/employees")) {
-        return Promise.resolve(EMPLOYEES);
-      }
-      if (path.includes("/config/office_location")) {
-        return Promise.resolve(OFFICE_LOCATION);
-      }
-      return Promise.resolve([]);
-    });
+    mockAdminApi({ employees: EMPLOYEES, officeLocation: OFFICE_LOCATION });
 
     const { default: AdminPage } = await importAdminPage();
     render(<AdminPage />);
@@ -190,15 +213,7 @@ describe("Admin Page", () => {
 
   it("shows office location form", async () => {
     mockAuthUser("HR");
-    mockGet.mockImplementation((path: string) => {
-      if (path.includes("/employees")) {
-        return Promise.resolve([]);
-      }
-      if (path.includes("/config/office_location")) {
-        return Promise.resolve(OFFICE_LOCATION);
-      }
-      return Promise.resolve([]);
-    });
+    mockAdminApi({ officeLocation: OFFICE_LOCATION });
 
     const { default: AdminPage } = await importAdminPage();
     render(<AdminPage />);

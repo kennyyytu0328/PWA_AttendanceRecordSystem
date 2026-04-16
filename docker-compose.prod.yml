@@ -1,0 +1,75 @@
+# =============================================================================
+# GoGoFresh Attendance — Production Docker Compose Template
+# =============================================================================
+# Differences from docker-compose.yml (dev):
+#   - No bind mounts (images are self-contained, immutable)
+#   - No --reload on uvicorn; use --workers for concurrency
+#   - No hardcoded secrets; all env values pulled from .env files
+#   - Postgres port NOT published to host (access only through the compose net)
+#   - Backend/frontend behind a reverse proxy (nginx/Caddy) for TLS termination
+#     — TLS is NOT handled in this file; put Caddy/nginx in front.
+# =============================================================================
+# Usage:
+#   cp backend/.env.production.example backend/.env
+#   cp frontend/.env.production.example frontend/.env.production
+#   # fill in real values in both .env files
+#   docker compose -f docker-compose.prod.yml up -d --build
+# =============================================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-attendance_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-attendance}
+    # No `ports:` — DB is internal to the compose network only.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-attendance_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    # Override the DB host so backend reaches postgres via the compose network,
+    # not whatever was in DATABASE_URL in .env (which may be a managed host).
+    # If you ARE using a managed DB, remove the `db` service above and this
+    # environment block; the .env DATABASE_URL will be used as-is.
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-attendance_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-attendance}
+    depends_on:
+      db:
+        condition: service_healthy
+    # Production: no --reload, use multiple workers for concurrency.
+    # Tune --workers to ~ (2 * CPU cores) + 1.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+    # Expose only to the reverse proxy, not to the public internet.
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        # NEXT_PUBLIC_* is baked into the bundle at build time — must be
+        # passed as a build-arg, not a runtime env.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required at build time}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    expose:
+      - "3000"
+
+volumes:
+  pgdata:
+    driver: local

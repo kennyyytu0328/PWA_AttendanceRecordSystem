@@ -86,6 +86,8 @@ frontend/src/
 21. **Team page reason column** — `/api/reports/daily` includes `reason` field (joined from `attendance_reasons`). Team page displays reason text next to status for HR/Manager review.
 22. **Taiwan workday calendar** — Auto-fetched from ruyut/TaiwanCalendar CDN (sourced from 行政院人事行政總處), cached in `system_config` table (key `workday_calendar_{year}`). Falls back to Mon-Fri if fetch fails. HR can manually refresh via admin panel ("更新全年行事曆"). Used by monthly override page. Distinguishes workdays, holidays, weekends, and 補班 (make-up workdays).
 23. **Monthly punch override** — Employees bulk-edit clock-in/clock-out for any workday of a month via `/dashboard/monthly-override`. HR+ can override any employee (with department filter + employee selector). Overrides mark old logs as `is_overridden=True`, create new logs, and recalculate daily summaries. No approval workflow. Supports pre-filling future days for salary settlement.
+24. **LAN dev access** — Frontend `next.config.ts` uses `allowedDevOrigins: ["192.168.2.*"]` (DNS-segment wildcard, NOT CIDR — Next.js splits on `.`). Backend `config.py` has `cors_origin_regex: r"http://192\.168\.\d+\.\d+:3000"` (regex matching any LAN IP). Remove both in production.
+25. **Production deployment** — `docker-compose.prod.yml` + `frontend/Dockerfile.prod` (multi-stage, non-root, `npm start`) + `backend/.env.production.example` + `frontend/.env.production.example` templates. Full walkthrough in `docs/PRODUCTION_DEPLOYMENT_GUIDE.md`. Key constraints: `NEXT_PUBLIC_API_URL` is baked in at build time (requires rebuild to change); WebAuthn requires HTTPS + bare-host `RP_ID` equal to the production domain; `seed.py` must NOT be run in prod (ships weak test passwords).
 
 ## Development Methodology
 
@@ -154,9 +156,14 @@ npx playwright test             # E2E tests
 ### Docker
 
 ```bash
+# Development
 docker-compose up -d            # Start all services
 docker-compose down             # Stop all services
 docker-compose up db            # Start PostgreSQL only
+
+# Production (see docs/PRODUCTION_DEPLOYMENT_GUIDE.md)
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml exec backend alembic upgrade head
 ```
 
 ## Implementation Phases
@@ -181,4 +188,4 @@ See `TODO.md` for detailed progress tracking.
 | 13 | Monthly Punch Override & Team Reason Column | 44 | Done |
 | 14 | UX Enhancements | — | In Progress |
 
-**Current test count: 268 backend + 34 frontend = 302 passing + 33 Playwright E2E stubs + 41 pre-existing frontend failures (Next.js migration)**
+**Current test count: 268 backend + 68 frontend = 336 passing + 33 Playwright E2E stubs**
