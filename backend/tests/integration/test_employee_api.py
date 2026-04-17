@@ -258,7 +258,7 @@ class TestDeleteEmployee:
     async def test_delete_employee_admin_only(
         self, client: AsyncClient, db_session: AsyncSession
     ):
-        """ADMIN should be able to delete (deactivate) an employee."""
+        """ADMIN should be able to delete an employee with no attendance logs."""
         await _seed_employee(db_session, emp_id="ADMIN01", role=Role.ADMIN)
         await _seed_employee(db_session, emp_id="EMP001", role=Role.EMPLOYEE)
         token = _make_token("ADMIN01", Role.ADMIN)
@@ -277,6 +277,202 @@ class TestDeleteEmployee:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert get_resp.status_code == 404
+
+    async def test_delete_employee_with_logs_blocked(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """Hard delete must be refused when attendance_logs reference the employee."""
+        from app.models.attendance_log import AttendanceLog, WorkMode
+
+        await _seed_employee(db_session, emp_id="HR001", role=Role.HR)
+        await _seed_employee(db_session, emp_id="EMP002", role=Role.EMPLOYEE)
+        db_session.add(
+            AttendanceLog(
+                emp_id="EMP002",
+                timestamp=datetime.datetime.now(UTC),
+                latitude=25.0,
+                longitude=121.0,
+                accuracy=10.0,
+                ip_address="127.0.0.1",
+                work_mode=WorkMode.OFFICE,
+            )
+        )
+        await db_session.commit()
+
+        token = _make_token("HR001", Role.HR)
+        resp = await client.delete(
+            "/api/employees/EMP002",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 409
+        assert "terminate" in resp.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/employees/{emp_id}/terminate — Soft-delete
+# ---------------------------------------------------------------------------
+class TestTerminateEmployee:
+    """POST /api/employees/{emp_id}/terminate"""
+
+    async def test_terminate_employee_hr(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """HR marks an employee as terminated; terminated_at is populated."""
+        await _seed_employee(db_session, emp_id="HR001", role=Role.HR)
+        await _seed_employee(db_session, emp_id="EMP001", role=Role.EMPLOYEE)
+        token = _make_token("HR001", Role.HR)
+
+        resp = await client.post(
+            "/api/employees/EMP001/terminate",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["terminated_at"] is not None
+
+    async def test_terminate_self_rejected(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """HR cannot terminate their own account (prevents lockout)."""
+        await _seed_employee(db_session, emp_id="HR001", role=Role.HR)
+        token = _make_token("HR001", Role.HR)
+
+        resp = await client.post(
+            "/api/employees/HR001/terminate",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert resp.status_code == 400
+
+    async def test_terminated_employee_login_blocked(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """After termination, password login must be refused with Invalid credentials."""
+        await _seed_employee(db_session, emp_id="HR001", role=Role.HR)
+        await _seed_employee(
+            db_session, emp_id="EMP001", role=Role.EMPLOYEE, password="correct"
+        )
+        hr_token = _make_token("HR001", Role.HR)
+
+        term_resp = await client.post(
+            "/api/employees/EMP001/terminate",
+            headers={"Authorization": f"Bearer {hr_token}"},
+        )
+        assert term_resp.status_code == 200
+
+        # Login with correct password should still fail
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"emp_id": "EMP001", "password": "correct"},
+        )
+        assert login_resp.status_code == 401
+
+    async def test_reactivate_employee(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """Reactivate clears terminated_at."""
+        await _seed_employee(db_session, emp_id="HR001", role=Role.HR)
+        await _seed_employee(
+            db_session, emp_id="EMP001", role=Role.EMPLOYEE, password="correct"
+        )
+        token = _make_token("HR001", Role.HR)
+
+        await client.post(
+            "/api/employees/EMP001/terminate",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        resp = await client.post(
+            "/api/employees/EMP001/reactivate",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["terminated_at"] is None
+
+        # Login should work again
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"emp_id": "EMP001", "password": "correct"},
+        )
+        assert login_resp.status_code == 200
+
+    async def test_terminated_employee_history_visible_in_reports(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """LSA compliance: terminated employee's existing summaries must
+        remain queryable via /api/reports/daily?emp_id=...&include_terminated=true.
+        Regression test for the bug where generate_all_summaries()
+        excluded terminated employees and hid their historical summaries.
+        """
+        from app.models.attendance_log import AttendanceLog, WorkMode
+
+        await _seed_employee(db_session, emp_id="HR001", role=Role.HR)
+        await _seed_employee(db_session, emp_id="QUIT01", role=Role.EMPLOYEE)
+
+        # Give QUIT01 a punch today so a LATE/NORMAL summary exists
+        today = datetime.datetime.now(UTC).replace(hour=11, minute=0, second=0, microsecond=0)
+        db_session.add(
+            AttendanceLog(
+                emp_id="QUIT01",
+                timestamp=today,
+                latitude=25.0,
+                longitude=121.0,
+                accuracy=10.0,
+                ip_address="127.0.0.1",
+                work_mode=WorkMode.OFFICE,
+            )
+        )
+        await db_session.commit()
+
+        token = _make_token("HR001", Role.HR)
+
+        # Terminate QUIT01 after the punch
+        term_resp = await client.post(
+            "/api/employees/QUIT01/terminate",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert term_resp.status_code == 200
+
+        # Query reports for today filtering by QUIT01 — must return the summary
+        today_iso = today.date().isoformat()
+        resp = await client.get(
+            f"/api/reports/daily?start_date={today_iso}&end_date={today_iso}&emp_id=QUIT01",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        rows = resp.json()
+        assert len(rows) == 1, f"Expected 1 summary for terminated QUIT01, got {rows}"
+        assert rows[0]["emp_id"] == "QUIT01"
+
+    async def test_list_employees_excludes_terminated_by_default(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """GET /api/employees hides terminated unless ?include_terminated=true."""
+        await _seed_employee(db_session, emp_id="HR001", role=Role.HR)
+        await _seed_employee(db_session, emp_id="ACTIVE1", role=Role.EMPLOYEE)
+        await _seed_employee(db_session, emp_id="QUIT1", role=Role.EMPLOYEE)
+        token = _make_token("HR001", Role.HR)
+
+        await client.post(
+            "/api/employees/QUIT1/terminate",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        resp = await client.get(
+            "/api/employees",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        ids = {emp["emp_id"] for emp in resp.json()}
+        assert "ACTIVE1" in ids
+        assert "QUIT1" not in ids
+        assert "HR001" in ids
+
+        resp2 = await client.get(
+            "/api/employees?include_terminated=true",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        ids2 = {emp["emp_id"] for emp in resp2.json()}
+        assert "QUIT1" in ids2
 
 
 # ---------------------------------------------------------------------------

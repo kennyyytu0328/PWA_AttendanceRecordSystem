@@ -177,7 +177,7 @@ async def authenticate_verify(
     # Issue JWT for the verified employee
     from app.repositories import employee_repository
     employee = await employee_repository.find_by_id(session, verified_emp_id)
-    if employee is None:
+    if employee is None or employee.terminated_at is not None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Employee not found",

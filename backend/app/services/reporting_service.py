@@ -158,8 +158,18 @@ async def generate_all_summaries(
     * On workdays, employees who did NOT punch get an ABSENT summary.
     * On holidays / weekends (per Taiwan calendar, fallback Mon-Fri),
       non-punching employees are silently skipped — no ABSENT generation.
+
+    Phase 14E — Terminated employees:
+    * Terminated employees' existing punched summaries are still returned
+      (required by LSA §30(5) retention).
+    * ABSENT is NOT generated for employees terminated on or before *date*
+      (they weren't active — can't be absent).
     """
-    employees = await employee_repository.find_all(session, skip=0, limit=10000)
+    # Include terminated so historical summaries are returned. ABSENT generation
+    # below is guarded separately.
+    employees = await employee_repository.find_all(
+        session, skip=0, limit=10000, include_terminated=True
+    )
 
     summaries: list[DailyAttendanceSummary] = []
     punched_emp_ids: set[str] = set()
@@ -178,6 +188,9 @@ async def generate_all_summaries(
     # Generate ABSENT summaries for employees who did not punch
     for emp in employees:
         if emp.emp_id in punched_emp_ids:
+            continue
+        # Skip ABSENT generation for employees already terminated on this date
+        if emp.terminated_at is not None and emp.terminated_at.date() <= date:
             continue
         absent_summary = await summary_repository.upsert_summary(
             session,
@@ -199,6 +212,7 @@ async def get_daily_report(
     department: str | None = None,
     emp_id: str | None = None,
     status_filter: str | None = None,
+    include_terminated: bool = False,
 ) -> list[DailyAttendanceSummary]:
     """Return daily attendance summaries for a date range (inclusive).
 
@@ -233,10 +247,23 @@ async def get_daily_report(
         current += datetime.timedelta(days=1)
 
     if emp_id is not None:
+        # Explicit emp_id filter always honored (terminated or not — LSA retention).
         all_summaries = [s for s in all_summaries if s.emp_id == emp_id]
+    elif not include_terminated:
+        # No specific emp_id picked: hide terminated employees by default.
+        terminated_emp_ids = {
+            emp.emp_id
+            for emp in await employee_repository.find_all(
+                session, skip=0, limit=10000, include_terminated=True
+            )
+            if emp.terminated_at is not None
+        }
+        all_summaries = [s for s in all_summaries if s.emp_id not in terminated_emp_ids]
 
     if department is not None:
-        employees = await employee_repository.find_by_department(session, department)
+        employees = await employee_repository.find_by_department(
+            session, department, include_terminated=include_terminated
+        )
         dept_emp_ids = {emp.emp_id for emp in employees}
         all_summaries = [s for s in all_summaries if s.emp_id in dept_emp_ids]
 
@@ -258,6 +285,7 @@ async def export_attendance(
     format: str,
     department: str | None = None,
     emp_id: str | None = None,
+    include_terminated: bool = False,
 ) -> str | bytes:
     """Export attendance summaries as CSV, JSON, or Excel.
 
@@ -283,12 +311,17 @@ async def export_attendance(
     """
     # Determine which employees to include
     if emp_id is not None:
+        # Explicit emp_id always honored (terminated or not — LSA retention).
         emp = await employee_repository.find_by_id(session, emp_id)
         employees = [emp] if emp is not None else []
     elif department is not None:
-        employees = await employee_repository.find_by_department(session, department)
+        employees = await employee_repository.find_by_department(
+            session, department, include_terminated=include_terminated
+        )
     else:
-        employees = await employee_repository.find_all(session, skip=0, limit=10000)
+        employees = await employee_repository.find_all(
+            session, skip=0, limit=10000, include_terminated=include_terminated
+        )
 
     emp_map = {emp.emp_id: emp for emp in employees}
 

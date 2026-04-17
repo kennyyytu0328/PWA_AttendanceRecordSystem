@@ -22,6 +22,10 @@ async def get_daily_report(
     department: str | None = Query(default=None, description="Filter by department"),
     emp_id: str | None = Query(default=None, description="Filter by employee ID"),
     status: str | None = Query(default=None, description="Filter by status"),
+    include_terminated: bool = Query(
+        default=False,
+        description="Include resigned employees (HR/audit use — LSA retention).",
+    ),
     user: dict = require_role(Role.MANAGER),
     session: AsyncSession = Depends(get_db),
 ):
@@ -33,6 +37,7 @@ async def get_daily_report(
         department=department,
         emp_id=emp_id,
         status_filter=status,
+        include_terminated=include_terminated,
     )
 
     summary_ids = [s.id for s in summaries if s.id is not None]
@@ -64,6 +69,10 @@ async def export_report(
     end_date: datetime.date = Query(..., description="End date (YYYY-MM-DD)"),
     department: str | None = Query(default=None, description="Filter by department"),
     emp_id: str | None = Query(default=None, description="Filter by employee ID"),
+    include_terminated: bool = Query(
+        default=False,
+        description="Include resigned employees (HR/audit use — LSA retention).",
+    ),
     user: dict = require_role(Role.HR),
     session: AsyncSession = Depends(get_db),
 ):
@@ -75,6 +84,7 @@ async def export_report(
         format=format,
         department=department,
         emp_id=emp_id,
+        include_terminated=include_terminated,
     )
 
     if format == "xlsx":

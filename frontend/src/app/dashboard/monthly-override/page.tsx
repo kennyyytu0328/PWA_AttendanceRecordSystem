@@ -499,16 +499,23 @@ export default function MonthlyOverridePage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
-                  <tr
-                    key={row.date}
-                    className={`border-b border-gray-100 last:border-b-0 ${
-                      row.is_holiday && !row.is_makeup_workday
-                        ? "bg-gray-50 text-gray-400"
+                {rows.map((row) => {
+                  const isTardy =
+                    row.status === "LATE" ||
+                    row.status === "EARLY_LEAVE" ||
+                    row.status === "LATE_AND_EARLY_LEAVE";
+                  const rowClass =
+                    row.is_holiday && !row.is_makeup_workday
+                      ? "bg-gray-50 text-gray-400"
+                      : isTardy
+                        ? "bg-red-100 hover:bg-red-200 border-l-4 border-l-red-500 font-medium"
                         : row.is_makeup_workday
                           ? "bg-amber-50/50"
-                          : "hover:bg-gray-50"
-                    }`}
+                          : "hover:bg-gray-50";
+                  return (
+                  <tr
+                    key={row.date}
+                    className={`border-b border-gray-100 last:border-b-0 ${rowClass}`}
                   >
                     <td className="px-4 py-3 text-gray-900">{row.date}</td>
                     <td className="px-4 py-3 text-gray-700">{row.weekday_zh}</td>
@@ -551,7 +558,8 @@ export default function MonthlyOverridePage() {
                       <StatusBadge status={row.status} t={t} />
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

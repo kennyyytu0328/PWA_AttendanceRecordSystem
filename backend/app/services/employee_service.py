@@ -62,6 +62,10 @@ async def authenticate(
     if not verify_password(password, employee.hashed_password):
         raise ValueError("Invalid credentials")
 
+    if employee.terminated_at is not None:
+        # Same generic error — don't leak account state to attackers
+        raise ValueError("Invalid credentials")
+
     payload = {
         "sub": employee.emp_id,
         "role": employee.role.value,
@@ -125,15 +129,21 @@ async def list_employees(
     current_department: str | None = None,
     skip: int = 0,
     limit: int = 100,
+    include_terminated: bool = False,
 ) -> list[EmployeeResponse]:
     """List employees filtered by the caller's permissions.
 
-    - ADMIN / HR: see all employees.
-    - MANAGER: see only employees in their own department.
-    - EMPLOYEE: see only themselves.
+    - ADMIN / HR: see all employees. Can opt-in to include terminated.
+    - MANAGER: see active employees in their own department only.
+    - EMPLOYEE: see only themselves (active or not — self-lookup).
     """
     if current_role in (Role.ADMIN, Role.HR):
-        employees = await repo.find_all(session, skip=skip, limit=limit)
+        employees = await repo.find_all(
+            session,
+            skip=skip,
+            limit=limit,
+            include_terminated=include_terminated,
+        )
     elif current_role == Role.MANAGER and current_department is not None:
         employees = await repo.find_by_department(session, current_department)
     else:
@@ -142,6 +152,38 @@ async def list_employees(
         employees = [employee] if employee is not None else []
 
     return [EmployeeResponse.model_validate(e) for e in employees]
+
+
+async def terminate_employee(
+    session: AsyncSession, emp_id: str
+) -> EmployeeResponse:
+    """Soft-delete: mark employee as terminated. Preserves attendance history.
+
+    Raises
+    ------
+    ValueError
+        If the employee does not exist.
+    """
+    employee = await repo.terminate_employee(session, emp_id)
+    if employee is None:
+        raise ValueError(f"Employee with emp_id '{emp_id}' not found")
+    return EmployeeResponse.model_validate(employee)
+
+
+async def reactivate_employee(
+    session: AsyncSession, emp_id: str
+) -> EmployeeResponse:
+    """Clear termination — rehire an employee.
+
+    Raises
+    ------
+    ValueError
+        If the employee does not exist.
+    """
+    employee = await repo.reactivate_employee(session, emp_id)
+    if employee is None:
+        raise ValueError(f"Employee with emp_id '{emp_id}' not found")
+    return EmployeeResponse.model_validate(employee)
 
 
 async def get_team_members(

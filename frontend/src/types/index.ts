@@ -22,6 +22,7 @@ export interface Employee {
   readonly role: Role;
   readonly shift_start_time: string;
   readonly shift_end_time: string;
+  readonly terminated_at?: string | null;
 }
 
 export interface EmployeeCreate {

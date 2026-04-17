@@ -5,6 +5,7 @@
     "cancel": "Cancel",
     "create": "Create",
     "edit": "Edit",
+    "delete": "Delete",
     "user": "User",
     "backToDashboard": "Dashboard"
   },
@@ -168,7 +169,25 @@
     "loadingGracePeriod": "Loading grace period...",
     "failedToLoadGracePeriod": "Failed to load grace period",
     "failedToUpdateGracePeriod": "Failed to update grace period",
-    "updateGracePeriod": "Update Grace Period"
+    "updateGracePeriod": "Update Grace Period",
+    "deleteEmployee": "Delete employee",
+    "confirmDeleteEmployee": "Delete employee {empId} ({name})? This action cannot be undone and may fail if there are attendance records referencing this employee.",
+    "employeeDeleted": "Employee {empId} deleted",
+    "failedToDelete": "Failed to delete employee",
+    "cannotDeleteSelf": "You cannot delete your own account",
+    "terminateEmployee": "Mark as resigned",
+    "confirmTerminateEmployee": "Mark employee {empId} ({name}) as resigned? They will be blocked from logging in, but all attendance history is preserved (required by Taiwan labor law). This action is reversible.",
+    "employeeTerminated": "Employee {empId} marked as resigned",
+    "failedToTerminate": "Failed to mark employee as resigned",
+    "cannotTerminateSelf": "You cannot mark your own account as resigned",
+    "reactivateEmployee": "Reactivate",
+    "confirmReactivateEmployee": "Reactivate employee {empId} ({name})? They will be able to log in again.",
+    "employeeReactivated": "Employee {empId} reactivated",
+    "failedToReactivate": "Failed to reactivate employee",
+    "terminatedBadge": "Resigned",
+    "terminatedOn": "Resigned on {date}",
+    "showTerminated": "Show resigned employees",
+    "hideTerminated": "Hide resigned employees"
   },
   "team": {
     "title": "Team Attendance",
@@ -230,7 +249,10 @@
     "statusEarlyLeave": "EARLY_LEAVE",
     "statusLateAndEarlyLeave": "LATE & EARLY LEAVE",
     "statusAbnormal": "ABNORMAL",
-    "statusAbsent": "ABSENT"
+    "statusAbsent": "ABSENT",
+    "showTerminated": "Include resigned employees",
+    "hideTerminated": "Hide resigned employees",
+    "terminatedOption": "(Resigned)"
   },
   "monthlyOverride": {
     "title": "Monthly Punch Override",

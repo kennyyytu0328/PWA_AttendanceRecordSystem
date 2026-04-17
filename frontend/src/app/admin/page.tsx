@@ -1,6 +1,6 @@
 "use client";
 
-import { Shield, Users, MapPin, Settings, Plus, Pencil, X, Timer, Building2, Trash2, CalendarDays, RefreshCw } from "lucide-react";
+import { Shield, Users, MapPin, Settings, Plus, Pencil, X, Timer, Building2, Trash2, CalendarDays, RefreshCw, UserMinus, UserCheck } from "lucide-react";
 
 import { BackButton } from "@/components/BackButton";
 import { useEffect, useState } from "react";
@@ -30,7 +30,7 @@ function hasMinimumRole(userRole: Role, requiredRole: Role): boolean {
 // Employee Management Section
 // ---------------------------------------------------------------------------
 
-function EmployeeManagementSection({ userRole, departments }: { readonly userRole: Role; readonly departments: readonly string[] }) {
+function EmployeeManagementSection({ userRole, currentEmpId, departments }: { readonly userRole: Role; readonly currentEmpId: string | null; readonly departments: readonly string[] }) {
   const { t } = useTranslation();
   const [employees, setEmployees] = useState<readonly Employee[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -38,11 +38,13 @@ function EmployeeManagementSection({ userRole, departments }: { readonly userRol
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingEmpId, setEditingEmpId] = useState<string | null>(null);
   const [formMessage, setFormMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [showTerminated, setShowTerminated] = useState(false);
 
   async function fetchEmployees() {
     setIsLoading(true);
     try {
-      const data = await apiClient.get<Employee[]>("/api/employees");
+      const qs = showTerminated ? "?include_terminated=true" : "";
+      const data = await apiClient.get<Employee[]>(`/api/employees${qs}`);
       setEmployees(data);
       setError(null);
     } catch (err) {
@@ -53,7 +55,7 @@ function EmployeeManagementSection({ userRole, departments }: { readonly userRol
     }
   }
 
-  useEffect(() => { fetchEmployees(); }, []);
+  useEffect(() => { fetchEmployees(); }, [showTerminated]);
 
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -111,6 +113,74 @@ function EmployeeManagementSection({ userRole, departments }: { readonly userRol
 
   const isAdmin = userRole === "ADMIN";
 
+  async function handleTerminate(emp: Employee) {
+    if (currentEmpId && currentEmpId === emp.emp_id) {
+      setFormMessage({ type: "error", text: t("admin.cannotTerminateSelf") });
+      return;
+    }
+    const confirmed = window.confirm(
+      t("admin.confirmTerminateEmployee", { empId: emp.emp_id, name: emp.name }),
+    );
+    if (!confirmed) return;
+
+    setFormMessage(null);
+    try {
+      await apiClient.post(`/api/employees/${emp.emp_id}/terminate`, {});
+      setFormMessage({
+        type: "success",
+        text: t("admin.employeeTerminated", { empId: emp.emp_id }),
+      });
+      await fetchEmployees();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t("admin.failedToTerminate");
+      setFormMessage({ type: "error", text: message });
+    }
+  }
+
+  async function handleReactivate(emp: Employee) {
+    const confirmed = window.confirm(
+      t("admin.confirmReactivateEmployee", { empId: emp.emp_id, name: emp.name }),
+    );
+    if (!confirmed) return;
+
+    setFormMessage(null);
+    try {
+      await apiClient.post(`/api/employees/${emp.emp_id}/reactivate`, {});
+      setFormMessage({
+        type: "success",
+        text: t("admin.employeeReactivated", { empId: emp.emp_id }),
+      });
+      await fetchEmployees();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t("admin.failedToReactivate");
+      setFormMessage({ type: "error", text: message });
+    }
+  }
+
+  async function handleDelete(emp: Employee) {
+    if (currentEmpId && currentEmpId === emp.emp_id) {
+      setFormMessage({ type: "error", text: t("admin.cannotDeleteSelf") });
+      return;
+    }
+    const confirmed = window.confirm(
+      t("admin.confirmDeleteEmployee", { empId: emp.emp_id, name: emp.name }),
+    );
+    if (!confirmed) return;
+
+    setFormMessage(null);
+    try {
+      await apiClient.delete(`/api/employees/${emp.emp_id}`);
+      setFormMessage({
+        type: "success",
+        text: t("admin.employeeDeleted", { empId: emp.emp_id }),
+      });
+      await fetchEmployees();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t("admin.failedToDelete");
+      setFormMessage({ type: "error", text: message });
+    }
+  }
+
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
@@ -118,14 +188,25 @@ function EmployeeManagementSection({ userRole, departments }: { readonly userRol
           <Users className="h-5 w-5 text-[#4ec6c1]" />
           <h2 className="text-lg font-semibold text-gray-900">{t("admin.employeeManagement")}</h2>
         </div>
-        <button
-          type="button"
-          onClick={() => { setShowCreateForm(!showCreateForm); setEditingEmpId(null); }}
-          className="flex items-center gap-1 rounded-lg bg-gradient-to-r from-[#4ec6c1] to-[#6dcf7c] px-3 py-1.5 text-xs font-medium text-white hover:from-[#45b5b0] hover:to-[#5fc06e]"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          {t("admin.addEmployee")}
-        </button>
+        <div className="flex items-center gap-3">
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-gray-600">
+            <input
+              type="checkbox"
+              checked={showTerminated}
+              onChange={(e) => setShowTerminated(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-gray-300 text-[#4ec6c1] focus:ring-[#4ec6c1]"
+            />
+            {showTerminated ? t("admin.hideTerminated") : t("admin.showTerminated")}
+          </label>
+          <button
+            type="button"
+            onClick={() => { setShowCreateForm(!showCreateForm); setEditingEmpId(null); }}
+            className="flex items-center gap-1 rounded-lg bg-gradient-to-r from-[#4ec6c1] to-[#6dcf7c] px-3 py-1.5 text-xs font-medium text-white hover:from-[#45b5b0] hover:to-[#5fc06e]"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t("admin.addEmployee")}
+          </button>
+        </div>
       </div>
 
       {formMessage && (
@@ -238,23 +319,71 @@ function EmployeeManagementSection({ userRole, departments }: { readonly userRol
                     </td>
                   </tr>
                 ) : (
-                  <tr key={emp.emp_id} className="border-b border-gray-100 last:border-0">
+                  <tr
+                    key={emp.emp_id}
+                    className={`border-b border-gray-100 last:border-0 ${emp.terminated_at ? "bg-gray-50 text-gray-400" : ""}`}
+                  >
                     <td className="py-2 pr-4 font-mono text-xs text-gray-600">{emp.emp_id}</td>
-                    <td className="py-2 pr-4 text-gray-900">{emp.name}</td>
+                    <td className="py-2 pr-4">
+                      <div className="flex items-center gap-2">
+                        <span className={emp.terminated_at ? "text-gray-500" : "text-gray-900"}>{emp.name}</span>
+                        {emp.terminated_at && (
+                          <span
+                            className="inline-block rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600"
+                            title={t("admin.terminatedOn", { date: new Date(emp.terminated_at).toLocaleDateString() })}
+                          >
+                            {t("admin.terminatedBadge")}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="py-2 pr-4 text-gray-600">{emp.department}</td>
                     <td className="py-2 pr-4">
                       <span className="inline-block rounded-full bg-[#e8faf9] px-2 py-0.5 text-xs font-medium text-[#3a9e99]">{emp.role}</span>
                     </td>
                     <td className="py-2 pr-4 text-gray-600">{emp.shift_start_time} - {emp.shift_end_time}</td>
                     <td className="py-2">
-                      <button
-                        type="button"
-                        onClick={() => { setEditingEmpId(emp.emp_id); setShowCreateForm(false); }}
-                        className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-blue-600"
-                        title={t("common.edit")}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => { setEditingEmpId(emp.emp_id); setShowCreateForm(false); }}
+                          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-blue-600"
+                          title={t("common.edit")}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        {currentEmpId !== emp.emp_id && (
+                          emp.terminated_at ? (
+                            <button
+                              type="button"
+                              onClick={() => handleReactivate(emp)}
+                              className="rounded p-1 text-gray-400 hover:bg-green-50 hover:text-green-600"
+                              title={t("admin.reactivateEmployee")}
+                            >
+                              <UserCheck className="h-4 w-4" />
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleTerminate(emp)}
+                                className="rounded p-1 text-gray-400 hover:bg-amber-50 hover:text-amber-600"
+                                title={t("admin.terminateEmployee")}
+                              >
+                                <UserMinus className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(emp)}
+                                className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                title={t("admin.deleteEmployee")}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </>
+                          )
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )
@@ -952,6 +1081,7 @@ export default function AdminPage() {
   const [departments, setDepartments] = useState<readonly string[]>([]);
 
   const userRole = user?.role ?? "EMPLOYEE";
+  const currentEmpId = user?.emp_id ?? null;
   const canAccessHr = hasMinimumRole(userRole, "HR");
   const canAccessAdmin = hasMinimumRole(userRole, "ADMIN");
 
@@ -1001,7 +1131,7 @@ export default function AdminPage() {
 
         <div className="space-y-6">
           <DepartmentManagementSection departments={departments} onDepartmentsChange={setDepartments} />
-          <EmployeeManagementSection userRole={userRole} departments={departments} />
+          <EmployeeManagementSection userRole={userRole} currentEmpId={currentEmpId} departments={departments} />
           <OfficeLocationSection />
           <GracePeriodSection />
           <CalendarStatusSection />

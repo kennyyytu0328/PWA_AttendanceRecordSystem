@@ -37,10 +37,15 @@ async def create_employee(
 async def list_employees(
     skip: int = 0,
     limit: int = 100,
+    include_terminated: bool = False,
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> list[EmployeeResponse]:
-    """List employees filtered by the caller's role permissions."""
+    """List employees filtered by the caller's role permissions.
+
+    ``include_terminated`` is honored for HR/ADMIN only. Managers and
+    employees always see active records only.
+    """
     current_role = Role(user["role"])
     current_emp_id = user["sub"]
 
@@ -55,6 +60,7 @@ async def list_employees(
         current_department=current_department,
         skip=skip,
         limit=limit,
+        include_terminated=include_terminated,
     )
 
 
@@ -116,11 +122,33 @@ async def update_employee(
 @router.delete("/{emp_id}")
 async def delete_employee(
     emp_id: str,
-    user: dict = require_role(Role.ADMIN),
+    user: dict = require_role(Role.HR),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Delete (deactivate) an employee. ADMIN only."""
+    """Hard-delete an employee. Requires HR or higher role.
+
+    Only permitted when the employee has no attendance records. Use the
+    /terminate endpoint for employees with history (required by Taiwan
+    labor law — attendance records must be retained).
+    """
     from app.repositories import employee_repository
+
+    if user["sub"] == emp_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete your own account",
+        )
+
+    has_logs = await employee_repository.has_attendance_logs(session, emp_id)
+    if has_logs:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Employee has attendance records and cannot be hard-deleted. "
+                "Use /terminate to mark the employee as inactive while "
+                "preserving attendance history."
+            ),
+        )
 
     deleted = await employee_repository.delete_employee(session, emp_id)
     if not deleted:
@@ -129,3 +157,43 @@ async def delete_employee(
             detail=f"Employee '{emp_id}' not found",
         )
     return {"deleted": True}
+
+
+@router.post("/{emp_id}/terminate", response_model=EmployeeResponse)
+async def terminate_employee(
+    emp_id: str,
+    user: dict = require_role(Role.HR),
+    session: AsyncSession = Depends(get_db),
+) -> EmployeeResponse:
+    """Mark an employee as terminated (soft-delete, preserves history).
+
+    Blocks further login. Reversible via /reactivate.
+    """
+    if user["sub"] == emp_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot terminate your own account",
+        )
+    try:
+        return await employee_service.terminate_employee(session, emp_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )
+
+
+@router.post("/{emp_id}/reactivate", response_model=EmployeeResponse)
+async def reactivate_employee(
+    emp_id: str,
+    user: dict = require_role(Role.HR),
+    session: AsyncSession = Depends(get_db),
+) -> EmployeeResponse:
+    """Clear termination — rehire an employee."""
+    try:
+        return await employee_service.reactivate_employee(session, emp_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )

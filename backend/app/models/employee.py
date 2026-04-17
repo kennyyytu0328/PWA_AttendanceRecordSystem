@@ -33,3 +33,8 @@ class Employee(SQLModel, table=True):
     shift_end_time: datetime.time = Field(
         sa_column=sa.Column(sa.Time, nullable=False)
     )
+
+    terminated_at: datetime.datetime | None = Field(
+        default=None,
+        sa_column=sa.Column(sa.DateTime(timezone=True), nullable=True, index=True),
+    )

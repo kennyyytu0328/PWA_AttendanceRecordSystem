@@ -1,6 +1,6 @@
 # TODO — GoGoFresh Attendance System (TDD Implementation)
 
-**Status:** All phases 0-13 complete. 268 backend tests + 68 frontend tests passing.
+**Status:** All phases 0-13 complete; Phase 14 in progress. 275 backend tests + 68 frontend tests passing.
 
 ## Phase 0: Project Scaffolding & Test Infrastructure -- DONE
 
@@ -406,15 +406,57 @@ Post-i18n/Phase-9C/Phase-11G test drift — tests written in Phases 5/6 had not 
 - [x] `frontend/__tests__/unit/app/admin.test.tsx` — `mockAdminApi()` helper returning properly-shaped payloads for all config endpoints (`/api/config/departments` → `{departments}`, `/api/config/office-location` → `{key, value}`, `/api/config/workdays/status` → `{calendars}`, `/api/config/grace-period` → `{minutes}`) — was crashing on `undefined.length`/`undefined.map` in DepartmentManagement and CalendarStatus sections
 - [x] `frontend/__tests__/unit/app/dashboard.test.tsx` — Switched from `getByRole("link", {name: /punch/i})` to `container.querySelector('a[href="/punch"]')` to avoid ambiguity with "Monthly Punch Override" NavLinkCard added in Phase 13B
 
+### 14E: Employee Soft-Delete for Labor-Law Retention -- DONE (6 tests)
+Taiwan Labor Standards Act §30(5) requires attendance records to be retained (5 years minimum). Hard-deleting an employee with punch history would destroy legally-required data and fail on the `attendance_logs.emp_id` FK. Added a soft-delete pathway so HR can mark resigned employees inactive while preserving history.
+
+#### Backend
+- [x] `backend/app/models/employee.py` — Added `terminated_at: datetime | None` (nullable, timezone-aware, indexed)
+- [x] `backend/alembic/versions/d4e5f6a7b8c9_add_terminated_at_to_employees.py` — Migration: add column + index
+- [x] `backend/app/schemas/employee.py` — `EmployeeResponse.terminated_at` exposed to clients
+- [x] `backend/app/repositories/employee_repository.py` — Added `terminate_employee()`, `reactivate_employee()`, `has_attendance_logs()` (safety check for hard delete); `find_all()` / `find_by_department()` / `find_by_role()` / `find_by_manager_department()` now exclude terminated by default (opt-in via `include_terminated=True`)
+- [x] `backend/app/services/employee_service.py` — `terminate_employee()` / `reactivate_employee()` services; `authenticate()` rejects terminated with generic `Invalid credentials` (no account-state leak); `list_employees()` honors `include_terminated` for HR/ADMIN only
+- [x] `backend/app/routers/employees.py` — `POST /api/employees/{id}/terminate` + `/reactivate` (HR+); `GET /api/employees?include_terminated=true`; `DELETE /api/employees/{id}` returns 409 if attendance_logs exist (prevents accidental history loss); self-termination + self-delete both blocked with 400
+- [x] `backend/app/routers/auth.py` — WebAuthn login path also rejects terminated employees (401)
+
+#### Frontend
+- [x] `frontend/src/types/index.ts` — Added optional `Employee.terminated_at?: string | null`
+- [x] `frontend/src/app/admin/page.tsx` — "Show resigned employees" toggle (drives `?include_terminated=`); terminated rows show grey styling + "Resigned" badge with tooltip showing termination date; action column swaps Trash/UserMinus for active rows and UserCheck for terminated rows; handlers for terminate/reactivate with localized confirm dialogs
+- [x] `frontend/src/messages/en.json` / `zh.json` — Added i18n keys: `terminateEmployee`, `confirmTerminateEmployee`, `employeeTerminated`, `reactivateEmployee`, `confirmReactivateEmployee`, `employeeReactivated`, `terminatedBadge`, `terminatedOn`, `showTerminated`, `hideTerminated`, and matching error messages
+
+#### Tests
+- [x] `backend/tests/integration/test_employee_api.py::TestTerminateEmployee` — 5 tests: HR can terminate, self-termination rejected (400), terminated employee's password login is blocked (401), reactivate restores login, list filter respects `include_terminated`
+- [x] `backend/tests/integration/test_employee_api.py::TestDeleteEmployee::test_delete_employee_with_logs_blocked` — 1 test: hard DELETE returns 409 when attendance_logs reference the employee
+
+#### Documentation
+- [x] `CLAUDE.md` — Added design decision #26 documenting the soft-delete pathway and labor-law rationale
+
+### 14F: Reports Audit Toggle + Terminated-Summary Regression Fix -- DONE (1 test)
+Restored visibility of resigned employees' historical records on the Reports page and fixed a regression introduced by 14E. After 14E, `generate_all_summaries()` called `employee_repository.find_all()` which default-excluded terminated employees, so their existing summaries in `daily_attendance_summaries` (e.g., a LATE row for the day of termination) were silently dropped from `/api/reports/daily` — even when HR explicitly filtered by `emp_id=<terminated-id>`. This violated LSA retention intent.
+
+#### Backend
+- [x] `backend/app/services/reporting_service.py::generate_all_summaries` — Now fetches employees with `include_terminated=True` so historical summaries for resigned employees are always returned. ABSENT generation guarded: skipped when `emp.terminated_at is not None and emp.terminated_at.date() <= date` (a resigned employee can't be marked absent for days on/after their termination date).
+- [x] `backend/app/services/reporting_service.py::get_daily_report` — Added `include_terminated: bool = False` parameter. When an explicit `emp_id` is passed, it is always honored regardless of termination (LSA retention priority). Without `emp_id`, summaries belonging to terminated employees are filtered out unless `include_terminated=True`.
+- [x] `backend/app/services/reporting_service.py::export_attendance` — Same `include_terminated` parameter; propagated to `find_by_department` / `find_all`. Explicit `emp_id` export always succeeds for terminated employees.
+- [x] `backend/app/routers/reports.py` — Both `GET /api/reports/daily` and `GET /api/reports/export` accept `include_terminated` query param (HR/audit use).
+
+#### Frontend
+- [x] `frontend/src/app/reports/page.tsx` — Existing "Include resigned employees" checkbox now also appends `?include_terminated=true` to the daily-report fetch and CSV/JSON/XLSX export URLs. Employee picker dropdown continues to show the `(Resigned)` / `（已離職）` suffix when the toggle is on.
+
+#### Tests
+- [x] `backend/tests/integration/test_employee_api.py::TestTerminateEmployee::test_terminated_employee_history_visible_in_reports` — Regression test: seed an EMPLOYEE, record an attendance log, terminate the employee, then verify `GET /api/reports/daily?emp_id=<that-id>` returns exactly one row containing the original summary. Confirms LSA-required history remains queryable.
+
+#### Documentation
+- [x] `CLAUDE.md` — Extended design decision #26 with the reports-compliance semantics (explicit-emp_id always honored; `include_terminated` toggle; ABSENT-generation guard for terminated employees).
+
 ## Test Coverage Summary
 
 | Layer | Tool | Actual / Est. | Target |
 |-------|------|--------------|--------|
-| Backend Unit | pytest | **207 passing** | 85% |
-| Backend Integration | pytest + httpx | **62 passing** | 80% |
+| Backend Unit | pytest | **201 passing** | 85% |
+| Backend Integration | pytest + httpx | **69 passing** | 80% |
 | Backend E2E | pytest | **5 passing** | Critical paths |
 | Frontend Unit | vitest + testing-library | **68 passing** | 80% |
 | Frontend E2E | Playwright | **33 stubs** (test.fixme) | Critical paths |
-| **Total** | | **336 passing + 33 stubs** | **80%+** |
+| **Total** | | **343 passing + 33 stubs** | **80%+** |
 
-Note: Backend 268 (207 unit + 61 integration + 5 e2e). Frontend 68 (all green as of Phase 14B — repaired the 41 post-i18n/Phase-9C migration failures). Total code tests: 268 + 68 = 336.
+Note: Backend 275 (201 unit + 69 integration + 5 e2e). Frontend 68 (all green as of Phase 14B — repaired the 41 post-i18n/Phase-9C migration failures). Total code tests: 275 + 68 = 343.

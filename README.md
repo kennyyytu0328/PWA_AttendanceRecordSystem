@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql" alt="PostgreSQL" />
   <img src="https://img.shields.io/badge/WebAuthn-FIDO2-4285F4?logo=google" alt="WebAuthn" />
   <img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker" alt="Docker" />
-  <img src="https://img.shields.io/badge/Tests-291_passing-brightgreen" alt="Tests" />
+  <img src="https://img.shields.io/badge/Tests-343_passing-brightgreen" alt="Tests" />
 </p>
 
 ---
@@ -30,6 +30,7 @@
 - **Role-Based Access** — 4-tier permission hierarchy (EMPLOYEE < MANAGER < HR < ADMIN)
 - **Team & Reports** — Managers view team attendance; HR generates filtered reports with CSV/JSON/Excel export
 - **Admin Panel** — Employee CRUD, office location config, department management, grace period settings
+- **Compliant Employee Lifecycle** — Soft-delete ("mark as resigned") preserves attendance history as required by Taiwan Labor Standards Act §30(5) (5-year retention); HR can re-include resigned employees in Reports / Exports via an audit toggle
 - **PWA** — Installable on mobile/desktop for native-like experience
 - **i18n** — English and Traditional Chinese (繁體中文)
 
@@ -163,17 +164,18 @@ After running `seed.py`:
 
 ## Testing
 
-**Backend** (225 tests):
+**Backend** (275 tests):
 
 ```bash
 cd backend
 pytest                                          # All tests
-pytest tests/unit/                              # Unit tests (176)
-pytest tests/integration/                       # Integration tests (49)
+pytest tests/unit/                              # Unit tests (201)
+pytest tests/integration/                       # Integration tests (69)
+pytest tests/e2e/                               # End-to-end tests (5)
 pytest --cov=app --cov-report=term-missing      # Coverage report
 ```
 
-**Frontend** (61 tests + 33 E2E stubs):
+**Frontend** (68 tests + 33 E2E stubs):
 
 ```bash
 cd frontend

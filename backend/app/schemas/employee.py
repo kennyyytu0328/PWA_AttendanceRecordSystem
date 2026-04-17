@@ -39,6 +39,7 @@ class EmployeeResponse(BaseModel):
     role: Role
     shift_start_time: datetime.time
     shift_end_time: datetime.time
+    terminated_at: Optional[datetime.datetime] = None
 
 
 class EmployeeUpdate(BaseModel):

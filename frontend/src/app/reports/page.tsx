@@ -57,13 +57,14 @@ function StatusBadge({ status, label }: { readonly status: string; readonly labe
 // Daily Report Section
 // ---------------------------------------------------------------------------
 
-function DailyReportSection() {
+function DailyReportSection({ isHr }: { readonly isHr: boolean }) {
   const { t } = useTranslation();
   const [startDate, setStartDate] = useState(todayString);
   const [endDate, setEndDate] = useState(todayString);
   const [department, setDepartment] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [showTerminated, setShowTerminated] = useState(false);
   const [data, setData] = useState<readonly DailyAttendanceSummary[]>([]);
   const [departments, setDepartments] = useState<readonly string[]>([]);
   const [employees, setEmployees] = useState<readonly Employee[]>([]);
@@ -73,7 +74,8 @@ function DailyReportSection() {
   useEffect(() => {
     async function fetchEmployeesAndDepts() {
       try {
-        const emps = await apiClient.get<Employee[]>("/api/employees");
+        const qs = isHr && showTerminated ? "?include_terminated=true" : "";
+        const emps = await apiClient.get<Employee[]>(`/api/employees${qs}`);
         setEmployees(emps);
         const depts = [...new Set(emps.map((e) => e.department))].sort();
         setDepartments(depts);
@@ -82,7 +84,21 @@ function DailyReportSection() {
       }
     }
     fetchEmployeesAndDepts();
-  }, []);
+  }, [isHr, showTerminated]);
+
+  // Clear stale employee/department selections when they disappear from the
+  // dropdown (e.g., HR unticks "Include resigned employees" while a resigned
+  // employee is selected). Without this, the state still carries the emp_id
+  // and the backend honors the explicit filter (LSA priority) — showing stale
+  // results after the dropdown visually reset to "All".
+  useEffect(() => {
+    if (selectedEmployee && !employees.some((e) => e.emp_id === selectedEmployee)) {
+      setSelectedEmployee("");
+    }
+    if (department && !employees.some((e) => e.department === department)) {
+      setDepartment("");
+    }
+  }, [employees, selectedEmployee, department]);
 
   const statusLabelMap: Record<string, string> = {
     NORMAL: t("reports.statusOnTime"),
@@ -101,6 +117,7 @@ function DailyReportSection() {
       if (department) params.set("department", department);
       if (selectedEmployee) params.set("emp_id", selectedEmployee);
       if (statusFilter) params.set("status", statusFilter);
+      if (isHr && showTerminated) params.set("include_terminated", "true");
 
       const result = await apiClient.get<DailyAttendanceSummary[]>(
         `/api/reports/daily?${params.toString()}`,
@@ -112,7 +129,7 @@ function DailyReportSection() {
     } finally {
       setIsLoading(false);
     }
-  }, [startDate, endDate, department, selectedEmployee, statusFilter, t]);
+  }, [startDate, endDate, department, selectedEmployee, statusFilter, isHr, showTerminated, t]);
 
   useEffect(() => {
     fetchReport();
@@ -167,10 +184,27 @@ function DailyReportSection() {
           >
             <option value="">{t("reports.employeePlaceholder")}</option>
             {employees.map((emp) => (
-              <option key={emp.emp_id} value={emp.emp_id}>{emp.emp_id} - {emp.name}</option>
+              <option key={emp.emp_id} value={emp.emp_id}>
+                {emp.emp_id} - {emp.name}
+                {emp.terminated_at ? ` ${t("reports.terminatedOption")}` : ""}
+              </option>
             ))}
           </select>
         </div>
+        {isHr && (
+          <div>
+            <label className="block text-xs font-medium text-gray-500">&nbsp;</label>
+            <label className="mt-1 flex cursor-pointer items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-600 shadow-sm">
+              <input
+                type="checkbox"
+                checked={showTerminated}
+                onChange={(e) => setShowTerminated(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-gray-300 text-[#4ec6c1] focus:ring-[#4ec6c1]"
+              />
+              {showTerminated ? t("reports.hideTerminated") : t("reports.showTerminated")}
+            </label>
+          </div>
+        )}
         <div>
           <label className="block text-xs font-medium text-gray-500">{t("reports.statusFilter")}</label>
           <select
@@ -258,6 +292,7 @@ function ExportSection() {
   const [endDate, setEndDate] = useState(todayString);
   const [department, setDepartment] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState("");
+  const [showTerminated, setShowTerminated] = useState(false);
   const [departments, setDepartments] = useState<readonly string[]>([]);
   const [employees, setEmployees] = useState<readonly Employee[]>([]);
   const [format, setFormat] = useState("csv");
@@ -267,7 +302,8 @@ function ExportSection() {
   useEffect(() => {
     async function fetchEmployeesAndDepts() {
       try {
-        const emps = await apiClient.get<Employee[]>("/api/employees");
+        const qs = showTerminated ? "?include_terminated=true" : "";
+        const emps = await apiClient.get<Employee[]>(`/api/employees${qs}`);
         setEmployees(emps);
         const depts = [...new Set(emps.map((e) => e.department))].sort();
         setDepartments(depts);
@@ -276,7 +312,17 @@ function ExportSection() {
       }
     }
     fetchEmployeesAndDepts();
-  }, []);
+  }, [showTerminated]);
+
+  // Clear stale selections if they vanish from the dropdown after the toggle changes.
+  useEffect(() => {
+    if (selectedEmployee && !employees.some((e) => e.emp_id === selectedEmployee)) {
+      setSelectedEmployee("");
+    }
+    if (department && !employees.some((e) => e.department === department)) {
+      setDepartment("");
+    }
+  }, [employees, selectedEmployee, department]);
 
   async function handleExport(e: React.FormEvent) {
     e.preventDefault();
@@ -291,6 +337,7 @@ function ExportSection() {
       });
       if (department) params.set("department", department);
       if (selectedEmployee) params.set("emp_id", selectedEmployee);
+      if (showTerminated) params.set("include_terminated", "true");
 
       if (format === "csv" || format === "xlsx") {
         const response = await fetch(
@@ -362,9 +409,24 @@ function ExportSection() {
             <select value={selectedEmployee} onChange={(e) => setSelectedEmployee(e.target.value)} className="mt-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-[#4ec6c1] focus:ring-2 focus:ring-[#4ec6c1] focus:outline-none">
               <option value="">{t("reports.employeePlaceholder")}</option>
               {employees.map((emp) => (
-                <option key={emp.emp_id} value={emp.emp_id}>{emp.emp_id} - {emp.name}</option>
+                <option key={emp.emp_id} value={emp.emp_id}>
+                  {emp.emp_id} - {emp.name}
+                  {emp.terminated_at ? ` ${t("reports.terminatedOption")}` : ""}
+                </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500">&nbsp;</label>
+            <label className="mt-1 flex cursor-pointer items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-600 shadow-sm">
+              <input
+                type="checkbox"
+                checked={showTerminated}
+                onChange={(e) => setShowTerminated(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-gray-300 text-[#4ec6c1] focus:ring-[#4ec6c1]"
+              />
+              {showTerminated ? t("reports.hideTerminated") : t("reports.showTerminated")}
+            </label>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500">{t("reports.format")}</label>
@@ -516,7 +578,7 @@ export default function ReportsPage() {
         </div>
 
         <div className="space-y-6">
-          <DailyReportSection />
+          <DailyReportSection isHr={canExport} />
           {canExport && <ExportSection />}
           {canGenerate && <GenerateSection />}
         </div>

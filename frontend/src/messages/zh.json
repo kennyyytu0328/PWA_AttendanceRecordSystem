@@ -5,6 +5,7 @@
     "cancel": "取消",
     "create": "建立",
     "edit": "編輯",
+    "delete": "刪除",
     "user": "使用者",
     "backToDashboard": "儀表板"
   },
@@ -168,7 +169,25 @@
     "loadingGracePeriod": "正在載入寬限時間...",
     "failedToLoadGracePeriod": "載入寬限時間失敗",
     "failedToUpdateGracePeriod": "更新寬限時間失敗",
-    "updateGracePeriod": "更新寬限時間"
+    "updateGracePeriod": "更新寬限時間",
+    "deleteEmployee": "刪除員工",
+    "confirmDeleteEmployee": "確定要刪除員工 {empId}（{name}）嗎？此動作無法復原；若該員工已有打卡紀錄，刪除可能會失敗。",
+    "employeeDeleted": "員工 {empId} 已刪除",
+    "failedToDelete": "刪除員工失敗",
+    "cannotDeleteSelf": "無法刪除自己的帳號",
+    "terminateEmployee": "標記為離職",
+    "confirmTerminateEmployee": "確定要將員工 {empId}（{name}）標記為離職嗎？該員工將無法再登入，但所有出勤紀錄會依勞基法規定保留。此動作可復原。",
+    "employeeTerminated": "員工 {empId} 已標記為離職",
+    "failedToTerminate": "標記離職失敗",
+    "cannotTerminateSelf": "無法將自己的帳號標記為離職",
+    "reactivateEmployee": "復職",
+    "confirmReactivateEmployee": "確定要讓員工 {empId}（{name}）復職嗎？該員工將可重新登入。",
+    "employeeReactivated": "員工 {empId} 已復職",
+    "failedToReactivate": "復職失敗",
+    "terminatedBadge": "已離職",
+    "terminatedOn": "{date} 離職",
+    "showTerminated": "顯示已離職員工",
+    "hideTerminated": "隱藏已離職員工"
   },
   "team": {
     "title": "團隊考勤",
@@ -230,7 +249,10 @@
     "statusEarlyLeave": "早退",
     "statusLateAndEarlyLeave": "遲到且早退",
     "statusAbnormal": "異常",
-    "statusAbsent": "缺勤"
+    "statusAbsent": "缺勤",
+    "showTerminated": "包含已離職員工",
+    "hideTerminated": "隱藏已離職員工",
+    "terminatedOption": "（已離職）"
   },
   "monthlyOverride": {
     "title": "月度打卡修改",
