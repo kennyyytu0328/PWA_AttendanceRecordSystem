@@ -1,6 +1,6 @@
 # TODO — GoGoFresh Attendance System (TDD Implementation)
 
-**Status:** All phases 0-13 complete; Phase 14 in progress. 275 backend tests + 68 frontend tests passing.
+**Status:** All phases 0-14 complete. 275 backend tests + 68 frontend tests passing.
 
 ## Phase 0: Project Scaffolding & Test Infrastructure -- DONE
 
@@ -373,7 +373,7 @@ Employee can bulk-edit first clock-in and last clock-out times for any day of th
 - [x] `backend/tests/integration/test_bulk_override_api.py` — 5 tests (success, HR for other, unauth, empty entries, permission error)
 - [x] `frontend/__tests__/unit/app/monthly-override.test.tsx` — 7 tests (page render, calendar table, holidays, save flow, HR selector)
 
-## Phase 14: UX Enhancements -- In Progress
+## Phase 14: UX Enhancements -- DONE
 
 ### 14A: Monthly Override Department Filter -- DONE
 - [x] `frontend/src/app/dashboard/monthly-override/page.tsx` — Added department filter dropdown (HR+ only) before employee selector; selecting a department filters the employee list; changing department resets employee selection
