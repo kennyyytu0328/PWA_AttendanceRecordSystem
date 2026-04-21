@@ -107,6 +107,18 @@ async def delete_employee(session: AsyncSession, emp_id: str) -> bool:
     return True
 
 
+async def find_terminated_ids(session: AsyncSession) -> set[str]:
+    """Return the set of emp_ids for all terminated employees.
+
+    Lightweight alternative to loading full Employee rows just to filter
+    by termination status. Used by reporting_service to hide terminated
+    employees from the default daily report.
+    """
+    statement = select(Employee.emp_id).where(Employee.terminated_at.is_not(None))
+    result = await session.execute(statement)
+    return set(result.scalars().all())
+
+
 async def has_attendance_logs(session: AsyncSession, emp_id: str) -> bool:
     """Return True if the employee has any attendance_logs rows."""
     statement = (

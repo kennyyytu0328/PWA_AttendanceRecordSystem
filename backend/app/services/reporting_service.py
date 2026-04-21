@@ -251,13 +251,7 @@ async def get_daily_report(
         all_summaries = [s for s in all_summaries if s.emp_id == emp_id]
     elif not include_terminated:
         # No specific emp_id picked: hide terminated employees by default.
-        terminated_emp_ids = {
-            emp.emp_id
-            for emp in await employee_repository.find_all(
-                session, skip=0, limit=10000, include_terminated=True
-            )
-            if emp.terminated_at is not None
-        }
+        terminated_emp_ids = await employee_repository.find_terminated_ids(session)
         all_summaries = [s for s in all_summaries if s.emp_id not in terminated_emp_ids]
 
     if department is not None:

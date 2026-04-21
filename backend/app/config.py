@@ -14,7 +14,8 @@ class Settings(BaseSettings):
     webauthn_origin: str = "http://localhost:3000"
 
     cors_origins: list[str] = ["http://localhost:3000"]
-    cors_origin_regex: str | None = r"http://192\.168\.\d+\.\d+:3000"
+    # Default None for production safety. Set CORS_ORIGIN_REGEX in .env for LAN dev access.
+    cors_origin_regex: str | None = None
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

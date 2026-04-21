@@ -7,6 +7,7 @@ import { BackButton } from "@/components/BackButton";
 
 import { apiClient } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { buildExportFilename } from "@/lib/exportFilename";
 import { useTranslation } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import type { DailyAttendanceSummary, Employee, Role } from "@/types";
@@ -339,6 +340,17 @@ function ExportSection() {
       if (selectedEmployee) params.set("emp_id", selectedEmployee);
       if (showTerminated) params.set("include_terminated", "true");
 
+      const selectedEmp = selectedEmployee
+        ? employees.find((e) => e.emp_id === selectedEmployee)
+        : undefined;
+      const filenameParams = {
+        startDate,
+        endDate,
+        empId: selectedEmployee || undefined,
+        empName: selectedEmp?.name,
+        department: department || undefined,
+      } as const;
+
       if (format === "csv" || format === "xlsx") {
         const response = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL ?? ""}/api/reports/export?${params.toString()}`,
@@ -353,7 +365,7 @@ function ExportSection() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `attendance_report_${startDate}_${endDate}.${format}`;
+        a.download = buildExportFilename({ ...filenameParams, format });
         a.click();
         URL.revokeObjectURL(url);
       } else {
@@ -364,7 +376,7 @@ function ExportSection() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `attendance_report_${startDate}_${endDate}.json`;
+        a.download = buildExportFilename({ ...filenameParams, format: "json" });
         a.click();
         URL.revokeObjectURL(url);
       }

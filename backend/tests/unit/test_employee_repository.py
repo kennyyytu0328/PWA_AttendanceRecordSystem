@@ -14,6 +14,7 @@ from app.repositories.employee_repository import (
     find_by_id,
     find_by_manager_department,
     find_by_role,
+    find_terminated_ids,
     update_employee,
 )
 
@@ -262,3 +263,30 @@ async def test_find_employees_by_manager(db_session: AsyncSession) -> None:
     emp_ids = {e.emp_id for e in result}
     assert emp_ids == {"EMP001", "EMP002"}
     assert all(e.role != Role.MANAGER for e in result)
+
+
+# ---- 9. find_terminated_ids ----
+
+
+async def test_find_terminated_ids_returns_only_terminated(
+    db_session: AsyncSession,
+) -> None:
+    await create_employee(db_session, _make_employee(emp_id="EMP001"))
+    await create_employee(db_session, _make_employee(emp_id="EMP002"))
+    terminated = _make_employee(emp_id="EMP003")
+    terminated.terminated_at = datetime.datetime.now(datetime.UTC)
+    await create_employee(db_session, terminated)
+
+    result = await find_terminated_ids(db_session)
+
+    assert result == {"EMP003"}
+
+
+async def test_find_terminated_ids_empty_when_no_terminations(
+    db_session: AsyncSession,
+) -> None:
+    await create_employee(db_session, _make_employee(emp_id="EMP001"))
+
+    result = await find_terminated_ids(db_session)
+
+    assert result == set()
