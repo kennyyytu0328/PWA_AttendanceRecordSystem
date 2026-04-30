@@ -460,3 +460,34 @@ Restored visibility of resigned employees' historical records on the Reports pag
 | **Total** | | **343 passing + 33 stubs** | **80%+** |
 
 Note: Backend 275 (201 unit + 69 integration + 5 e2e). Frontend 68 (all green as of Phase 14B — repaired the 41 post-i18n/Phase-9C migration failures). Total code tests: 275 + 68 = 343.
+
+## Known Issues / Deferred
+
+### Roles are hard-coded (not HR-configurable)
+Employee roles (`EMPLOYEE` / `MANAGER` / `HR` / `ADMIN`) are baked into the codebase at multiple layers. Unlike departments (stored in `system_config` and editable via admin UI), roles have no DB-backed list and adding/renaming requires a multi-file code change. Intentionally deferred — role names drive authorization logic throughout the codebase, so this is not a good candidate for runtime configuration.
+
+**Surface area if we ever add or rename a role:**
+
+- [ ] `backend/app/models/employee.py:10` — extend `Role(str, Enum)`
+- [ ] New Alembic migration — PG enum requires `ALTER TYPE role ADD VALUE 'X'` or `ALTER TYPE role RENAME VALUE ...`; back up DB first (enum changes can't be cleanly rolled back once rows reference the value)
+- [ ] `backend/app/services/permission_service.py` — add role to the frozenset permission matrix (without this, the role has no permissions)
+- [ ] Audit `require_role(Role.X)` call sites across `backend/app/routers/{employees,reports,attendance,reasons,system_config}.py`, services, and `middleware/auth_middleware.py` — decide whether the new role satisfies each gate
+- [ ] `backend/seed.py` + `backend/tests/` — fixtures and any role-literal assertions
+- [ ] `frontend/src/types/index.ts:3` — extend `Role` union
+- [ ] `frontend/src/app/admin/page.tsx:18` — add to `ROLE_LEVELS` hierarchy (pick numeric level)
+- [ ] `frontend/src/app/admin/page.tsx:235-239` and `:298-302` — add `<option>` rows to create and edit dropdowns (respect `isAdmin` gating if applicable)
+- [ ] `frontend/src/app/admin/page.tsx:342` — badge currently renders raw `emp.role`; swap to localized label if localized badges are desired
+- [ ] `frontend/src/messages/en.json` / `zh.json` (lines 161-164) — add `roleX` i18n keys
+- [ ] Frontend tests — any test constructing a user with a role literal
+
+**Rename caveat:** renaming a role invalidates existing JWTs that encode the old role name — users must re-login.
+
+**Decision:** only *adding* a new role is acceptable; renaming existing roles is out of scope (migration risks + JWT invalidation + ~11 files of string-literal references with no compile-time safety net).
+
+**Open questions to answer before implementation:**
+
+- [ ] **Role name** — the uppercase enum value stored in the DB (e.g. `AUDITOR`, `SUPERVISOR`, `VIEWER`)
+- [ ] **Hierarchy position in `ROLE_LEVELS`** — current levels: `EMPLOYEE=1, MANAGER=2, HR=3, ADMIN=4`. New role's level? (And is it a *peer* of an existing role at the same numeric level but with different permissions, or does it sit between two existing levels?)
+- [ ] **Permission set** — what can it do? Easiest framing: pick the closest existing role and describe the diff ("like MANAGER but can also view all attendance", "read-only HR", etc.), or enumerate against the existing capability axes: view own / view team / view all attendance, approve overrides, manage employees, export reports, change office location, refresh workday calendar, manage departments, manage grace period
+- [ ] **i18n labels** — English label + 繁體中文 label for `frontend/src/messages/{en,zh}.json` (e.g. `"Auditor"` / `"稽核員"`)
+- [ ] **Who can assign the role?** — HR-assignable (like MANAGER / HR today) or ADMIN-only (like ADMIN today, gated by `isAdmin` in `admin/page.tsx:239`)
