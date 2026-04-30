@@ -4,28 +4,55 @@
 
 ### 1. Start Services
 
+#### Option A: Docker Compose — full stack
+
 ```bash
-# Option A: Docker Compose (recommended)
-docker-compose up -d
+docker compose up -d
+docker compose exec backend alembic upgrade head
+```
 
-# Option B: Run locally
-# Terminal 1 — Database
-docker-compose up db
+#### Option B: DB in Docker, backend + frontend on host (recommended for active dev)
 
-# Terminal 2 — Backend
+**Terminal 1 — Database (Docker):**
+```bash
+docker compose up -d db
+```
+DB exposed on host port **5433** (compose maps `5433:5432`). Backend `.env` must use `localhost:5433`.
+
+**Terminal 2 — Backend (host venv):**
+
+First-time setup (Windows / PowerShell):
+```powershell
 cd backend
+py -3 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install fastapi "uvicorn[standard]" "sqlalchemy[asyncio]" sqlmodel asyncpg alembic webauthn "passlib[bcrypt]" "python-jose[cryptography]" pydantic-settings python-multipart aiosqlite openpyxl pytest pytest-asyncio httpx freezegun factory-boy coverage pytest-cov
+pip install "bcrypt<4.1"   # passlib is incompatible with bcrypt>=5.0
+copy .env.example .env     # then edit DATABASE_URL → localhost:5433
 alembic upgrade head
-uvicorn app.main:app --reload --port 8000
+```
 
-# Terminal 3 — Frontend
+Daily use:
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1   # prepends .venv\Scripts to PATH for this shell
+python -m uvicorn app.main:app --reload --port 8000
+```
+
+> **Why activate?** When you type `python`, Windows uses the first `python.exe` on PATH — by default that's the system Python (`C:\Python314\python.exe`), which has none of the project deps. Activating prepends `.venv\Scripts\` so `python` resolves to the venv copy. Verify with `where python` (first line wins). Alternatively, skip activation and call `.\.venv\Scripts\python.exe -m uvicorn ...` explicitly.
+
+**Terminal 3 — Frontend:**
+```bash
 cd frontend
+npm install   # first time only
 npm run dev
 ```
 
 ### 2. Seed Test Data
 
-```bash
+```powershell
 cd backend
+.\.venv\Scripts\Activate.ps1
 python seed.py
 ```
 
