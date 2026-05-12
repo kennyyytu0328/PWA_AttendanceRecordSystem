@@ -145,6 +145,70 @@ async def test_find_last_clock_out(db_session):
     assert last.timestamp == datetime.datetime(2026, 3, 19, 18, 5, 0)
 
 
+# ---------- 5b. overridden logs must be ignored ----------
+async def test_find_first_clock_in_ignores_overridden(db_session):
+    """An overridden earlier log must NOT shadow a fresh non-overridden one."""
+    from app.repositories.attendance_repository import find_first_clock_in
+
+    db_session.add(_make_employee())
+    await db_session.commit()
+
+    # Stale entry (earlier in the day) marked overridden
+    db_session.add(
+        _make_log(
+            timestamp=datetime.datetime(2026, 3, 19, 7, 0, 0),
+            is_overridden=True,
+        )
+    )
+    # Current entry — should win
+    db_session.add(
+        _make_log(
+            timestamp=datetime.datetime(2026, 3, 19, 9, 0, 0),
+            is_overridden=False,
+        )
+    )
+    await db_session.commit()
+
+    first = await find_first_clock_in(db_session, "EMP100", datetime.date(2026, 3, 19))
+
+    assert first is not None
+    assert first.timestamp == datetime.datetime(2026, 3, 19, 9, 0, 0)
+
+
+async def test_find_last_clock_out_ignores_overridden(db_session):
+    """An overridden later log must NOT shadow a fresh non-overridden one.
+
+    Regression test: prior bug where saving a 17:25 clock-out failed to take
+    effect because a stale overridden 20:25 log was still being returned by
+    MAX(timestamp), then the daily summary rebuilt around the wrong value.
+    """
+    from app.repositories.attendance_repository import find_last_clock_out
+
+    db_session.add(_make_employee())
+    await db_session.commit()
+
+    # Current entry
+    db_session.add(
+        _make_log(
+            timestamp=datetime.datetime(2026, 3, 19, 17, 25, 0),
+            is_overridden=False,
+        )
+    )
+    # Stale entry (later in the day) marked overridden — should be ignored
+    db_session.add(
+        _make_log(
+            timestamp=datetime.datetime(2026, 3, 19, 20, 25, 0),
+            is_overridden=True,
+        )
+    )
+    await db_session.commit()
+
+    last = await find_last_clock_out(db_session, "EMP100", datetime.date(2026, 3, 19))
+
+    assert last is not None
+    assert last.timestamp == datetime.datetime(2026, 3, 19, 17, 25, 0)
+
+
 # ---------- 6. no update method ----------
 async def test_no_update_method_exists(db_session):
     """The attendance repository must NOT expose an update function."""

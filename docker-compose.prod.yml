@@ -51,7 +51,11 @@ services:
         condition: service_healthy
     # Production: no --reload, use multiple workers for concurrency.
     # Tune --workers to ~ (2 * CPU cores) + 1.
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+    # --proxy-headers + --forwarded-allow-ips=* lets FastAPI trust
+    # X-Forwarded-Proto / X-Forwarded-Host from the upstream reverse proxy
+    # (www.gogoffcc.com). Without this, requests look like plain HTTP and
+    # WebAuthn origin checks fail.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --proxy-headers --forwarded-allow-ips=*
     # Expose only to the reverse proxy, not to the public internet.
     expose:
       - "8000"
@@ -64,6 +68,10 @@ services:
         # NEXT_PUBLIC_* is baked into the bundle at build time — must be
         # passed as a build-arg, not a runtime env.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required at build time}
+        # Path prefix when deployed under an upstream reverse proxy
+        # (e.g. /gogoffcc-arms for www.gogoffcc.com/gogoffcc-arms). Leave
+        # blank when deploying at the domain root.
+        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH-}
     restart: unless-stopped
     depends_on:
       - backend

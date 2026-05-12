@@ -24,7 +24,8 @@
     "fingerprintNotRegistered": "No fingerprint registered for this Employee ID",
     "fingerprintNotSupported": "Fingerprint login is not supported in this browser",
     "validationFailed": "Validation failed",
-    "loginFailed": "Login failed"
+    "loginFailed": "Login failed",
+    "copyright": "© 2026 FFCC鮮速冷鏈科技. All rights reserved."
   },
   "punch": {
     "title": "Attendance Punch",
@@ -278,7 +279,8 @@
     "allDepartments": "All Departments",
     "selectEmployee": "Select Employee",
     "previousMonth": "Previous Month",
-    "nextMonth": "Next Month"
+    "nextMonth": "Next Month",
+    "scrollHint": "Tip: swipe sideways to see all columns"
   },
   "calendarStatus": {
     "title": "Workday Calendar Status",

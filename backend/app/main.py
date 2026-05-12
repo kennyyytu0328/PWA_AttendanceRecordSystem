@@ -8,6 +8,7 @@ app = FastAPI(
     title="GoGoFresh Attendance System",
     description="Zero-Trust PWA Attendance System API",
     version="0.1.0",
+    root_path=settings.root_path,
 )
 
 # ---------------------------------------------------------------------------

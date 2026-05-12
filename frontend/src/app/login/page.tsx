@@ -80,7 +80,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#4ec6c1] via-[#6dcf7c] to-[#b8d84e] px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-[#4ec6c1] via-[#6dcf7c] to-[#b8d84e] px-4 py-8">
       <LanguageSwitcher />
       <div className="w-full max-w-sm space-y-6 rounded-2xl bg-white/90 p-8 shadow-xl backdrop-blur-sm">
         <div className="text-center">
@@ -175,6 +175,10 @@ export default function LoginPage() {
           </>
         )}
       </div>
+
+      <footer className="mt-6 text-center text-xs text-white/80 drop-shadow-sm">
+        {t("login.copyright")}
+      </footer>
     </div>
   );
 }

@@ -24,7 +24,8 @@
     "fingerprintNotRegistered": "此員工編號尚未註冊指紋",
     "fingerprintNotSupported": "此瀏覽器不支援指紋登入",
     "validationFailed": "驗證失敗",
-    "loginFailed": "登入失敗"
+    "loginFailed": "登入失敗",
+    "copyright": "© 2026 FFCC鮮速冷鏈科技. 版權所有."
   },
   "punch": {
     "title": "考勤打卡",
@@ -278,7 +279,8 @@
     "allDepartments": "所有部門",
     "selectEmployee": "選擇員工",
     "previousMonth": "上個月",
-    "nextMonth": "下個月"
+    "nextMonth": "下個月",
+    "scrollHint": "提示：左右滑動可查看所有欄位"
   },
   "calendarStatus": {
     "title": "工作日行事曆狀態",

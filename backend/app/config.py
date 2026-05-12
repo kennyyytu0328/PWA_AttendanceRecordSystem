@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     # Default None for production safety. Set CORS_ORIGIN_REGEX in .env for LAN dev access.
     cors_origin_regex: str | None = None
 
+    # ASGI root_path — set to "/gogoffcc-arms" in production when behind an
+    # upstream reverse proxy that strips the path prefix. Tells FastAPI to
+    # generate OpenAPI/Swagger URLs under the prefix. Empty in dev.
+    root_path: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

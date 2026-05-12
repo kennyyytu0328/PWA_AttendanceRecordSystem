@@ -67,6 +67,7 @@ Then edit `backend/.env`:
 | `WEBAUTHN_RP_ID` | `attendance.yourdomain.com` — **bare host**, no scheme, no port, no path |
 | `WEBAUTHN_RP_NAME` | Any display name shown in the biometric prompt (e.g., `GoGoFresh Attendance`) |
 | `WEBAUTHN_ORIGIN` | `https://attendance.yourdomain.com` — full origin, must be HTTPS |
+| `ROOT_PATH` | Leave empty for domain-root deploys. Set to e.g. `/gogoffcc-arms` when an upstream reverse proxy serves the app under a sub-path (see §6 Option C) |
 
 > **WebAuthn gotcha**: `WEBAUTHN_RP_ID` and `WEBAUTHN_ORIGIN` are pinned into each registered authenticator. If you change either after users have registered fingerprints, all of those credentials become invalid and must be re-registered.
 
@@ -80,9 +81,10 @@ Edit `frontend/.env.production`:
 
 | Variable | Value |
 |---|---|
-| `NEXT_PUBLIC_API_URL` | `https://api.yourdomain.com` (or `""` if you proxy `/api` through the frontend domain — see §6 option B) |
+| `NEXT_PUBLIC_API_URL` | `https://api.yourdomain.com` (or `""` if you proxy `/api` through the frontend domain — see §6 option B; or `/<prefix>` for sub-path deploys — see §6 option C) |
+| `NEXT_PUBLIC_BASE_PATH` | Leave empty for domain-root deploys. Set to e.g. `/gogoffcc-arms` when an upstream reverse proxy serves the app under a sub-path (see §6 Option C). Must match backend `ROOT_PATH`. |
 
-> **Important**: `NEXT_PUBLIC_*` is **compiled into the JS bundle at build time**, not read at runtime. If you change this value, you must rebuild the frontend container.
+> **Important**: `NEXT_PUBLIC_*` is **compiled into the JS bundle at build time**, not read at runtime. If you change either value, you must rebuild the frontend container.
 
 ### 3.3 Compose-level env
 
@@ -249,6 +251,84 @@ server {
 
 If you use Option B, set `NEXT_PUBLIC_API_URL=""` (empty string) in `frontend/.env.production` so fetches go to the same origin.
 
+### Option C — Behind an upstream reverse proxy at a sub-path
+
+Use this when you do **not** control the public domain — a separate upstream proxy (run by a hosting team or shared platform) terminates TLS and forwards a sub-path to your server. Example: `https://www.gogoffcc.com/gogoffcc-arms` is served by an upstream that proxies `/gogoffcc-arms/*` to your stack.
+
+#### Upstream proxy configuration (path-based stripping)
+
+Coordinate with whoever runs the upstream so it strips the prefix for API calls but **preserves** it for frontend requests. Without this split, Next.js will either 404 (strip everywhere) or generate broken link URLs (preserve everywhere).
+
+Reference Nginx config the upstream operator needs:
+
+```nginx
+# Strip the prefix for backend API calls
+location /gogoffcc-arms/api/ {
+    proxy_pass http://your-server-ip:8000/api/;   # trailing slash strips the prefix
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+}
+
+# Preserve the prefix for the frontend
+location /gogoffcc-arms/ {
+    proxy_pass http://your-server-ip:3000;        # NO trailing slash → prefix preserved
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+```
+
+#### Your-server-side configuration
+
+Set both env files to the matching prefix:
+
+`backend/.env`:
+
+```
+ROOT_PATH=/gogoffcc-arms
+WEBAUTHN_RP_ID=www.gogoffcc.com              # bare host — never includes the path
+WEBAUTHN_ORIGIN=https://www.gogoffcc.com     # origin only — never includes the path
+CORS_ORIGINS=["https://www.gogoffcc.com"]
+```
+
+`frontend/.env.production` and root `.env`:
+
+```
+NEXT_PUBLIC_API_URL=/gogoffcc-arms             # api client appends /api/... so this is the prefix only
+NEXT_PUBLIC_BASE_PATH=/gogoffcc-arms
+```
+
+Publish container ports on your server's interface that the upstream can reach (e.g. a private network IP or `127.0.0.1` if upstream is on the same box) — replace the `expose:` blocks in `docker-compose.prod.yml`:
+
+```yaml
+  backend:
+    ports:
+      - "<internal-ip>:8000:8000"
+  frontend:
+    ports:
+      - "<internal-ip>:3000:3000"
+```
+
+The `docker-compose.prod.yml` already runs uvicorn with `--proxy-headers --forwarded-allow-ips=*`, which is required so FastAPI trusts `X-Forwarded-Proto: https` from the upstream. Without it, WebAuthn origin checks see `http://` and reject all biometric logins.
+
+#### Sanity-check matrix
+
+After the stack is up and the upstream operator has reloaded their proxy:
+
+| URL the browser hits | What each hop sees |
+|---|---|
+| `https://www.gogoffcc.com/gogoffcc-arms/login` | Upstream → `your-server:3000/gogoffcc-arms/login` → Next.js (`basePath=/gogoffcc-arms`) serves login page ✓ |
+| `https://www.gogoffcc.com/gogoffcc-arms/api/auth/login` | Upstream → `your-server:8000/api/auth/login` → FastAPI router (`prefix=/api/auth`) handles it ✓ |
+| `https://www.gogoffcc.com/gogoffcc-arms/_next/static/...` | Upstream preserves prefix → Next.js serves asset ✓ |
+| `https://www.gogoffcc.com/gogoffcc-arms/manifest.webmanifest` | Generated by `app/manifest.ts`, `start_url` and `scope` already include the prefix ✓ |
+
+> **WebAuthn note**: Because the upstream — not your server — owns the TLS termination for `www.gogoffcc.com`, you do not need your own cert. But the browser still records origin = `https://www.gogoffcc.com` for every registered credential. If the upstream's domain ever changes, all existing fingerprints become invalid and must be re-registered.
+
 ---
 
 ## 7. Smoke test
@@ -275,6 +355,28 @@ Open `https://attendance.yourdomain.com` in a browser:
 2. Change the password immediately (admin panel → edit self)
 3. Register a fingerprint — should succeed on HTTPS
 4. Log out, log back in via fingerprint
+
+### 7.1 Sub-path deployment smoke test (Option C only)
+
+Run this once after the upstream operator has reloaded their proxy, before announcing the URL to users. Substitute your real values for `<HOST>` (`www.gogoffcc.com`) and `<PREFIX>` (`/gogoffcc-arms`).
+
+| # | Step | Pass criterion |
+|---|------|----------------|
+| 1 | Browse to `https://<HOST><PREFIX>/login` | Login page renders. No 404. URL bar still shows the prefix. |
+| 2 | DevTools → Network → reload the page | All `_next/static/*` requests are under `<PREFIX>/_next/...` and return 200. Zero requests hit the root `/_next/...`. |
+| 3 | Submit the login form with `ADMIN` credentials | Single POST to `<PREFIX>/api/auth/login` returns 200 with a JWT. No 404, no CORS error in console. |
+| 4 | DevTools → Application → Manifest | `start_url` and `scope` both equal `<PREFIX>/`. Icons resolve under `<PREFIX>/icons/...`. |
+| 5 | Register a fingerprint (admin panel → enable WebAuthn) | Biometric prompt shows RP name. No console error mentioning origin or RP ID mismatch. |
+| 6 | Log out, then log back in via fingerprint | Authentication succeeds. JWT issued. Lands on the dashboard at `<PREFIX>/dashboard`. |
+| 7 | Browse to `https://<HOST><PREFIX>/docs` | FastAPI Swagger UI loads. All endpoint paths in the spec are shown under `<PREFIX>` (because `ROOT_PATH` is set). "Try it out" requests succeed. |
+| 8 | Hit `https://<HOST><PREFIX>/api/health` directly | Returns `{"status":"ok"}`. Confirms the upstream `/api/` strip rule is wired up. |
+| 9 | (Mobile, optional) Install the PWA from the URL | "Add to Home Screen" succeeds; launching the installed app opens at `<PREFIX>/`, not the host root. |
+
+**If step 5 or 6 fails with an origin-mismatch error**, the upstream is not forwarding `X-Forwarded-Proto: https` — uvicorn is seeing the request as HTTP and rejecting WebAuthn. Confirm `--proxy-headers --forwarded-allow-ips=*` is on the uvicorn command (already set in `docker-compose.prod.yml`) and that the upstream's `proxy_set_header X-Forwarded-Proto $scheme;` line is present.
+
+**If step 2 shows `_next/static` 404s**, the upstream is stripping `<PREFIX>` on the frontend `location` block — it should preserve it (no trailing slash on `proxy_pass`). See §6 Option C.
+
+**If step 8 returns 404 but step 1 works**, the upstream's `/api/` location block is missing the trailing-slash strip — fix the upstream's `proxy_pass http://your-server:8000/api/;` (the trailing slash is what does the strip).
 
 ---
 

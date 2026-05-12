@@ -472,10 +472,17 @@ export default function MonthlyOverridePage() {
           </div>
         )}
 
+        {/* Mobile-only scroll hint — hidden once we hit md (table fits) */}
+        {!isLoading && (
+          <p className="mb-2 text-xs text-gray-500 md:hidden">
+            {t("monthlyOverride.scrollHint")}
+          </p>
+        )}
+
         {/* Calendar Table */}
         {!isLoading && (
-          <div className="overflow-hidden rounded-xl bg-white shadow-sm">
-            <table className="w-full text-left text-sm">
+          <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
+            <table className="w-full min-w-[720px] text-left text-sm">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className="px-4 py-3 font-medium text-gray-600">

@@ -87,7 +87,7 @@ async def find_first_clock_in(
     emp_id: str,
     date: datetime.date,
 ) -> AttendanceLog | None:
-    """Return the earliest log entry for *emp_id* on the given *date*, or ``None``."""
+    """Return the earliest non-overridden log entry for *emp_id* on the given *date*."""
     start_of_day = datetime.datetime.combine(date, datetime.time.min)
     next_day = datetime.datetime.combine(
         date + datetime.timedelta(days=1), datetime.time.min
@@ -98,6 +98,7 @@ async def find_first_clock_in(
         .where(AttendanceLog.emp_id == emp_id)
         .where(AttendanceLog.timestamp >= start_of_day)
         .where(AttendanceLog.timestamp < next_day)
+        .where(AttendanceLog.is_overridden == False)  # noqa: E712
         .order_by(AttendanceLog.timestamp.asc())
         .limit(1)
     )
@@ -110,7 +111,7 @@ async def find_last_clock_out(
     emp_id: str,
     date: datetime.date,
 ) -> AttendanceLog | None:
-    """Return the latest log entry for *emp_id* on the given *date*, or ``None``."""
+    """Return the latest non-overridden log entry for *emp_id* on the given *date*."""
     start_of_day = datetime.datetime.combine(date, datetime.time.min)
     next_day = datetime.datetime.combine(
         date + datetime.timedelta(days=1), datetime.time.min
@@ -121,6 +122,7 @@ async def find_last_clock_out(
         .where(AttendanceLog.emp_id == emp_id)
         .where(AttendanceLog.timestamp >= start_of_day)
         .where(AttendanceLog.timestamp < next_day)
+        .where(AttendanceLog.is_overridden == False)  # noqa: E712
         .order_by(AttendanceLog.timestamp.desc())
         .limit(1)
     )
