@@ -5,12 +5,17 @@ Provides two FastAPI dependencies:
 - ``require_role(minimum_role)``: ensures the caller has at least the given role.
 """
 
-from fastapi import Depends, HTTPException, Request, status
+import datetime
+
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.database import get_db
 from app.models.employee import Role
+from app.repositories import employee_repository
 
 # ---------------------------------------------------------------------------
 # Role hierarchy — higher index = more privileges
@@ -37,15 +42,22 @@ _CREDENTIALS_ERROR = HTTPException(
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    session: AsyncSession = Depends(get_db),
 ) -> dict:
     """Decode and validate a JWT Bearer token.
 
-    Returns the token payload dict with at least ``sub`` (emp_id) and ``role``.
+    Also enforces revocation via ``password_changed_at``: if the token's
+    ``iat`` predates the employee's most recent password change, reject.
+    Legacy employees with ``password_changed_at IS NULL`` and tokens issued
+    before the iat-claim rollout are exempt — both skip the check.
+
+    Returns the token payload dict with at least ``sub`` and ``role``.
 
     Raises
     ------
     HTTPException 401
-        If the token is missing, expired, malformed, or has an invalid signature.
+        If the token is missing, expired, malformed, has an invalid signature,
+        or has been revoked by a subsequent password change.
     """
     if credentials is None:
         raise _CREDENTIALS_ERROR
@@ -69,6 +81,24 @@ async def get_current_user(
             detail="Token payload incomplete",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Revocation check: reject if token's iat < employee.password_changed_at.
+    # Tokens without iat (issued before Task 4 shipped) skip the check entirely
+    # to preserve backward compatibility.
+    iat = payload.get("iat")
+    if iat is not None:
+        employee = await employee_repository.find_by_id(session, payload["sub"])
+        if (
+            employee is not None
+            and employee.password_changed_at is not None
+        ):
+            iat_dt = datetime.datetime.fromtimestamp(iat, tz=datetime.UTC)
+            if iat_dt < employee.password_changed_at:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token has been revoked. Please log in again.",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
 
     return payload
 
