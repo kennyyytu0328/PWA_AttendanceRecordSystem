@@ -14,6 +14,7 @@ import {
   Fingerprint,
   Check,
   LogOut,
+  Lock,
 } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
@@ -325,6 +326,12 @@ export default function DashboardPage() {
               label={t("monthlyOverride.title")}
               description={t("monthlyOverride.subtitle")}
               icon={<Calendar className="h-5 w-5" />}
+            />
+            <NavLinkCard
+              href="/dashboard/change-password"
+              label={t("changePassword.title")}
+              description={t("changePassword.subtitle")}
+              icon={<Lock className="h-5 w-5" />}
             />
             {hasRole(role, MANAGER_ROLES) && (
               <NavLinkCard
