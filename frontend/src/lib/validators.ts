@@ -28,7 +28,32 @@ export const officeLocationSchema = z.object({
   longitude: z.number().min(-180).max(180),
 });
 
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "required"),
+    newPassword: z
+      .string()
+      .min(8, "tooShort")
+      .max(128, "tooShort")
+      .refine((s) => /\d/.test(s), { message: "missingDigit" }),
+    confirmPassword: z.string().min(1, "required"),
+    empId: z.string().min(1),
+  })
+  .refine((d) => d.newPassword === d.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "mismatch",
+  })
+  .refine((d) => d.newPassword !== d.currentPassword, {
+    path: ["newPassword"],
+    message: "sameAsCurrent",
+  })
+  .refine((d) => d.newPassword !== d.empId, {
+    path: ["newPassword"],
+    message: "sameAsEmpId",
+  });
+
 export type LoginRequestInput = z.infer<typeof loginRequestSchema>;
 export type PunchRequestInput = z.infer<typeof punchRequestSchema>;
 export type EmployeeCreateInput = z.infer<typeof employeeCreateSchema>;
 export type OfficeLocationInput = z.infer<typeof officeLocationSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
