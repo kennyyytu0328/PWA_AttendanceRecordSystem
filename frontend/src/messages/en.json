@@ -307,8 +307,10 @@
     "hint": "At least 8 characters, including a digit",
     "success": "Password updated. Please log in again.",
     "errors": {
+      "required": "This field is required",
       "wrongCurrent": "Current password is incorrect",
       "tooShort": "Password must be at least 8 characters",
+      "tooLong": "Password must be at most 128 characters",
       "missingDigit": "Password must contain at least one digit",
       "sameAsCurrent": "New password must differ from current",
       "sameAsEmpId": "New password must not equal your Employee ID",

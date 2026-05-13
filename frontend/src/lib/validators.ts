@@ -34,7 +34,7 @@ export const changePasswordSchema = z
     newPassword: z
       .string()
       .min(8, "tooShort")
-      .max(128, "tooShort")
+      .max(128, "tooLong")
       .refine((s) => /\d/.test(s), { message: "missingDigit" }),
     confirmPassword: z.string().min(1, "required"),
     empId: z.string().min(1),
