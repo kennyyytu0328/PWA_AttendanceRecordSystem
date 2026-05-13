@@ -187,10 +187,12 @@ async def authenticate_verify(
     from jose import jwt as jose_jwt
     from app.config import settings
 
+    now = datetime.now(UTC)
     payload = {
         "sub": employee.emp_id,
         "role": employee.role.value,
-        "exp": datetime.now(UTC) + timedelta(
+        "iat": int(now.timestamp()),
+        "exp": now + timedelta(
             minutes=settings.access_token_expire_minutes,
         ),
     }

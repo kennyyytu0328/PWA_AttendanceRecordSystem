@@ -66,10 +66,12 @@ async def authenticate(
         # Same generic error — don't leak account state to attackers
         raise ValueError("Invalid credentials")
 
+    now = datetime.now(UTC)
     payload = {
         "sub": employee.emp_id,
         "role": employee.role.value,
-        "exp": datetime.now(UTC) + timedelta(
+        "iat": int(now.timestamp()),
+        "exp": now + timedelta(
             minutes=settings.access_token_expire_minutes,
         ),
     }
