@@ -93,7 +93,11 @@ async def get_current_user(
             and employee.password_changed_at is not None
         ):
             iat_dt = datetime.datetime.fromtimestamp(iat, tz=datetime.UTC)
-            if iat_dt < employee.password_changed_at:
+            changed_at = employee.password_changed_at
+            # Normalise to UTC-aware if the DB returns a naive datetime
+            if changed_at.tzinfo is None:
+                changed_at = changed_at.replace(tzinfo=datetime.UTC)
+            if iat_dt < changed_at:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Token has been revoked. Please log in again.",

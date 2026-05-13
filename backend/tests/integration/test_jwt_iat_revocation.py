@@ -30,7 +30,6 @@ async def _make_emp(
     return e
 
 
-@pytest.mark.skip(reason="depends on Task 7 endpoint (POST /api/auth/change-password)")
 @pytest.mark.asyncio
 async def test_old_jwt_rejected_after_password_change(
     client: AsyncClient, db_session: AsyncSession
@@ -66,7 +65,6 @@ async def test_old_jwt_rejected_after_password_change(
     assert r.status_code == 401
 
 
-@pytest.mark.skip(reason="depends on Task 7 endpoint (POST /api/auth/change-password)")
 @pytest.mark.asyncio
 async def test_new_jwt_after_change_still_works(
     client: AsyncClient, db_session: AsyncSession

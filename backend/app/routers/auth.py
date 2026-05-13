@@ -13,7 +13,7 @@ from app.middleware.rate_limiter import (
     reset_rate_limit,
 )
 from app.repositories import authenticator_repository
-from app.schemas.auth import LoginRequest, TokenResponse
+from app.schemas.auth import ChangePasswordRequest, LoginRequest, TokenResponse
 from app.services import employee_service, webauthn_service
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -50,6 +50,42 @@ async def login(
 async def me(user: dict = Depends(get_current_user)):
     """Return the current authenticated user's identity."""
     return {"emp_id": user["sub"], "role": user["role"]}
+
+
+@router.post("/change-password", status_code=200)
+async def change_password(
+    body: ChangePasswordRequest,
+    request: Request,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Change the authenticated user's password. Forces re-login everywhere."""
+    emp_id = user["sub"]
+    client_ip = request.client.host if request.client else "unknown"
+    rate_limit_key = f"{client_ip}:{emp_id}:cp"
+
+    check_rate_limit(rate_limit_key)
+
+    try:
+        await employee_service.change_password(
+            session, emp_id, body.current_password, body.new_password
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if msg == "Invalid credentials":
+            record_failed_attempt(rate_limit_key)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials",
+            )
+        # Policy violations (new==current, new==emp_id) — 422
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=msg,
+        )
+
+    reset_rate_limit(rate_limit_key)
+    return {"message": "password changed, please log in again"}
 
 
 @router.get("/webauthn/status")
