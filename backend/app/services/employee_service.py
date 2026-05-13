@@ -223,9 +223,9 @@ async def change_password(
     employee = await repo.find_by_id(session, emp_id)
     if employee is None:
         raise ValueError("Invalid credentials")
-    if employee.terminated_at is not None:
-        raise ValueError("Invalid credentials")
     if not verify_password(current, employee.hashed_password):
+        raise ValueError("Invalid credentials")
+    if employee.terminated_at is not None:
         raise ValueError("Invalid credentials")
 
     if new == current:
