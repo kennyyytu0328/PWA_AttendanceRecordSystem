@@ -296,6 +296,27 @@
     "refreshSuccess": "行事曆更新成功，共載入 {count} 天。",
     "refreshError": "行事曆更新失敗。"
   },
+  "changePassword": {
+    "title": "變更密碼",
+    "subtitle": "更新您的帳戶密碼",
+    "currentLabel": "目前密碼",
+    "newLabel": "新密碼",
+    "confirmLabel": "確認新密碼",
+    "submit": "更新密碼",
+    "submitting": "更新中...",
+    "hint": "至少 8 字元，且包含至少一個數字",
+    "success": "密碼已更新，請重新登入",
+    "errors": {
+      "wrongCurrent": "目前密碼不正確",
+      "tooShort": "密碼長度必須至少 8 個字元",
+      "missingDigit": "密碼必須包含至少一個數字",
+      "sameAsCurrent": "新密碼必須與目前密碼不同",
+      "sameAsEmpId": "新密碼不可與員工編號相同",
+      "mismatch": "新密碼與確認密碼不相符",
+      "rateLimited": "嘗試次數過多，請稍後再試",
+      "generic": "密碼變更失敗，請再試一次"
+    }
+  },
   "validation": {
     "empIdRequired": "請輸入員工編號",
     "passwordRequired": "請輸入密碼"

@@ -296,6 +296,27 @@
     "refreshSuccess": "Calendar refreshed successfully. {count} days loaded.",
     "refreshError": "Failed to refresh calendar."
   },
+  "changePassword": {
+    "title": "Change Password",
+    "subtitle": "Update your account password",
+    "currentLabel": "Current password",
+    "newLabel": "New password",
+    "confirmLabel": "Confirm new password",
+    "submit": "Update password",
+    "submitting": "Updating...",
+    "hint": "At least 8 characters, including a digit",
+    "success": "Password updated. Please log in again.",
+    "errors": {
+      "wrongCurrent": "Current password is incorrect",
+      "tooShort": "Password must be at least 8 characters",
+      "missingDigit": "Password must contain at least one digit",
+      "sameAsCurrent": "New password must differ from current",
+      "sameAsEmpId": "New password must not equal your Employee ID",
+      "mismatch": "New password and confirmation do not match",
+      "rateLimited": "Too many attempts. Please try again later.",
+      "generic": "Failed to change password. Please try again."
+    }
+  },
   "validation": {
     "empIdRequired": "Employee ID is required",
     "passwordRequired": "Password is required"
