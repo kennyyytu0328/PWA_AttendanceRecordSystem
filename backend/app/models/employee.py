@@ -38,3 +38,8 @@ class Employee(SQLModel, table=True):
         default=None,
         sa_column=sa.Column(sa.DateTime(timezone=True), nullable=True, index=True),
     )
+
+    password_changed_at: datetime.datetime | None = Field(
+        default=None,
+        sa_column=sa.Column(sa.DateTime(timezone=True), nullable=True),
+    )
