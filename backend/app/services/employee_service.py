@@ -194,3 +194,50 @@ async def get_team_members(
     """Return non-manager employees in the given department."""
     employees = await repo.find_by_manager_department(session, manager_department)
     return [EmployeeResponse.model_validate(e) for e in employees]
+
+
+async def change_password(
+    session: AsyncSession,
+    emp_id: str,
+    current: str,
+    new: str,
+) -> None:
+    """Change an employee's password after verifying the current one.
+
+    Same generic "Invalid credentials" error for not-found / wrong-password /
+    terminated, matching the ``authenticate`` pattern (CLAUDE.md decision #4).
+
+    Distinct errors for the two policy violations callers can legitimately
+    surface to the user (the JWT already proved who they are):
+    - new password equal to current password ("must differ")
+    - new password equal to the emp_id ("must not equal employee ID")
+
+    The new password's length / digit policy is enforced by the Pydantic
+    schema; this function trusts ``new`` to already satisfy it.
+
+    Raises
+    ------
+    ValueError
+        On any of the conditions above.
+    """
+    employee = await repo.find_by_id(session, emp_id)
+    if employee is None:
+        raise ValueError("Invalid credentials")
+    if employee.terminated_at is not None:
+        raise ValueError("Invalid credentials")
+    if not verify_password(current, employee.hashed_password):
+        raise ValueError("Invalid credentials")
+
+    if new == current:
+        raise ValueError("new password must differ from current password")
+    if new == emp_id:
+        raise ValueError("new password must not equal employee ID")
+
+    await repo.update_employee(
+        session,
+        emp_id,
+        {
+            "hashed_password": hash_password(new),
+            "password_changed_at": datetime.now(UTC),
+        },
+    )
