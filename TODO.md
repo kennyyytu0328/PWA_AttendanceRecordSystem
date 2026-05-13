@@ -448,6 +448,24 @@ Restored visibility of resigned employees' historical records on the Reports pag
 #### Documentation
 - [x] `CLAUDE.md` — Extended design decision #26 with the reports-compliance semantics (explicit-emp_id always honored; `include_terminated` toggle; ABSENT-generation guard for terminated employees).
 
+### 14G: Self-Service Password Change -- DONE
+Employees can change their own passwords after authentication. All old JWTs are immediately revoked by setting `password_changed_at`.
+- [x] `backend/app/utils/password.py` — Added `validate_password_strength(password: str) -> bool` (enforces >=8 chars and >=1 digit)
+- [x] `backend/app/schemas/auth.py` — Added `ChangePasswordRequest` schema (current_password, new_password with validation)
+- [x] `backend/app/services/employee_service.py::change_password()` — Verifies current password, rejects new==current and new==emp_id, sets `password_changed_at` to now(UTC)
+- [x] `backend/app/routers/auth.py` — Added `POST /api/auth/change-password` endpoint (authenticated users only)
+- [x] `backend/app/middleware/auth_middleware.py` — Added `password_changed_at` revocation check: rejects any JWT whose `iat` predates the employee's most recent password change; backward compatible with employees whose `password_changed_at IS NULL` (allows legacy tokens)
+- [x] `backend/tests/unit/test_change_password_service.py` — 6 tests (success, wrong current, unknown employee, terminated, new==current, new==emp_id)
+- [x] `backend/tests/unit/test_change_password_schema.py` — 2 tests (valid/invalid password strength)
+- [x] `backend/tests/integration/test_change_password_endpoint.py` — 10 tests (success with re-login, old JWT revoked, new JWT accepted, 401/422 error cases)
+- [x] `backend/tests/integration/test_jwt_iat_revocation.py` — 3 tests (old JWT rejected, new JWT works, legacy employees still work)
+- [x] `frontend/src/lib/validators.ts` — Added `changePasswordSchema` (current_password, new_password with strength validation)
+- [x] `frontend/src/components/ChangePasswordForm.tsx` — Form with password strength meter, error/success feedback
+- [x] `frontend/src/app/dashboard/change-password/page.tsx` — Dedicated change-password page linked from dashboard
+- [x] `frontend/__tests__/unit/components/ChangePasswordForm.test.tsx` — 8 tests (form render, validation, API calls, success/error states)
+- [x] `frontend/src/messages/en.json` / `zh.json` — Added i18n keys for change password form
+- [x] Plan: `docs/superpowers/plans/2026-05-13-self-service-password-change.md`
+
 ## Test Coverage Summary
 
 | Layer | Tool | Actual / Est. | Target |
