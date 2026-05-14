@@ -34,6 +34,7 @@ def calculate_status(
     first_clock_in: datetime.datetime | None,
     last_clock_out: datetime.datetime | None,
     grace_minutes: int = DEFAULT_GRACE_MINUTES,
+    leave_type: str | None = None,
 ) -> AttendanceStatus | None:
     """Determine the attendance status for a single day.
 
@@ -47,16 +48,26 @@ def calculate_status(
         Earliest punch of the day, or ``None`` if no punches.
     last_clock_out:
         Latest punch of the day, or ``None`` if no punches.
+    leave_type:
+        Optional non-empty leave-type string (e.g. ``"特休"``). When provided
+        and truthy, the function short-circuits and returns
+        ``AttendanceStatus.LEAVE`` regardless of punch timing. Empty string
+        and ``None`` are treated as "no leave" and fall through to the
+        regular timing-based logic.
 
     Returns
     -------
     AttendanceStatus | None
+        ``LEAVE`` when ``leave_type`` is a non-empty string.
         ``None`` when there are no punches at all.
         ``ABNORMAL`` when only one of clock-in / clock-out exists.
         ``LATE`` when clock-in exceeds the grace period (takes precedence).
         ``EARLY_LEAVE`` when clock-out is before shift end.
         ``NORMAL`` otherwise.
     """
+    if leave_type:  # truthy → non-empty leave type
+        return AttendanceStatus.LEAVE
+
     if first_clock_in is None and last_clock_out is None:
         return None
 
