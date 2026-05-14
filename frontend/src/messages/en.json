@@ -2,6 +2,7 @@
   "common": {
     "loading": "Loading...",
     "save": "Save",
+    "saving": "Saving...",
     "cancel": "Cancel",
     "create": "Create",
     "edit": "Edit",
@@ -191,7 +192,13 @@
     "hideTerminated": "Hide resigned employees",
     "leaveTypes": "Leave Types",
     "leaveTypesAdd": "Add Leave Type",
-    "leaveTypesRemove": "Remove"
+    "leaveTypesRemove": "Remove",
+    "leaveTypesEmpty": "No leave types configured.",
+    "leaveTypesPlaceholder": "New leave type name",
+    "leaveTypesDuplicate": "This leave type already exists",
+    "leaveTypesSaved": "Leave types saved",
+    "leaveTypesSaveError": "Failed to save leave types",
+    "leaveTypesLoadError": "Failed to load leave types"
   },
   "team": {
     "title": "Team Attendance",

@@ -2,6 +2,7 @@
   "common": {
     "loading": "載入中...",
     "save": "儲存",
+    "saving": "儲存中...",
     "cancel": "取消",
     "create": "建立",
     "edit": "編輯",
@@ -189,9 +190,15 @@
     "terminatedOn": "{date} 離職",
     "showTerminated": "顯示已離職員工",
     "hideTerminated": "隱藏已離職員工",
-    "leaveTypes": "假別管理",
-    "leaveTypesAdd": "新增假別",
-    "leaveTypesRemove": "移除"
+    "leaveTypes": "請假類別管理",
+    "leaveTypesAdd": "新增類別",
+    "leaveTypesRemove": "移除",
+    "leaveTypesEmpty": "尚未設定任何假別",
+    "leaveTypesPlaceholder": "新假別名稱",
+    "leaveTypesDuplicate": "此假別已存在",
+    "leaveTypesSaved": "假別已儲存",
+    "leaveTypesSaveError": "儲存假別失敗",
+    "leaveTypesLoadError": "載入假別失敗"
   },
   "team": {
     "title": "團隊考勤",

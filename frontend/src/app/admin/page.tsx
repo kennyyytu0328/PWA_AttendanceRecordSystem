@@ -3,6 +3,7 @@
 import { Shield, Users, MapPin, Settings, Plus, Pencil, X, Timer, Building2, Trash2, CalendarDays, RefreshCw, UserMinus, UserCheck } from "lucide-react";
 
 import { BackButton } from "@/components/BackButton";
+import { LeaveTypesTab } from "@/components/admin/LeaveTypesTab";
 import { useEffect, useState } from "react";
 
 import { apiClient } from "@/lib/api";
@@ -372,14 +373,16 @@ function EmployeeManagementSection({ userRole, currentEmpId, departments }: { re
                               >
                                 <UserMinus className="h-4 w-4" />
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDelete(emp)}
-                                className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                                title={t("admin.deleteEmployee")}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(emp)}
+                                  className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                  title={t("admin.deleteEmployee")}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              )}
                             </>
                           )
                         )}
@@ -1132,6 +1135,7 @@ export default function AdminPage() {
         <div className="space-y-6">
           <DepartmentManagementSection departments={departments} onDepartmentsChange={setDepartments} />
           <EmployeeManagementSection userRole={userRole} currentEmpId={currentEmpId} departments={departments} />
+          <LeaveTypesTab />
           <OfficeLocationSection />
           <GracePeriodSection />
           <CalendarStatusSection />
