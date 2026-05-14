@@ -25,12 +25,10 @@ async def upsert_summary(
     first_clock_in: datetime.datetime | None,
     last_clock_out: datetime.datetime | None,
     status: AttendanceStatus,
+    leave_type: str | None = None,
+    remark: str | None = None,
 ) -> DailyAttendanceSummary:
-    """Insert or update a daily attendance summary by (emp_id, date).
-
-    If a row with the given (emp_id, date) already exists, update its
-    fields. Otherwise create a new row. Returns the persisted instance.
-    """
+    """Insert or update a daily attendance summary by (emp_id, date)."""
     statement = select(DailyAttendanceSummary).where(
         DailyAttendanceSummary.emp_id == emp_id,
         DailyAttendanceSummary.date == date,
@@ -42,6 +40,8 @@ async def upsert_summary(
         existing.first_clock_in = first_clock_in
         existing.last_clock_out = last_clock_out
         existing.status = status
+        existing.leave_type = leave_type
+        existing.remark = remark
         session.add(existing)
         await session.commit()
         await session.refresh(existing)
@@ -53,6 +53,8 @@ async def upsert_summary(
         first_clock_in=first_clock_in,
         last_clock_out=last_clock_out,
         status=status,
+        leave_type=leave_type,
+        remark=remark,
     )
     session.add(summary)
     await session.commit()

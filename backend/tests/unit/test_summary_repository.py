@@ -248,3 +248,51 @@ async def test_find_summaries_by_status(db_session: AsyncSession) -> None:
     normal_results = await find_by_status(db_session, AttendanceStatus.NORMAL)
     assert len(normal_results) == 1
     assert normal_results[0].emp_id == "EMP009"
+
+
+# ---------- 6. test_upsert_summary_persists_leave_type_and_remark ----------
+
+
+async def test_upsert_summary_persists_leave_type_and_remark(db_session):
+    # Use the _create_employee helper already in this file
+    await _create_employee(db_session, emp_id="E010")
+    summary = await upsert_summary(
+        db_session,
+        emp_id="E010",
+        date=datetime.date(2026, 5, 14),
+        first_clock_in=None,
+        last_clock_out=None,
+        status=AttendanceStatus.LEAVE,
+        leave_type="特休",
+        remark="上午",
+    )
+    assert summary.leave_type == "特休"
+    assert summary.remark == "上午"
+
+
+# ---------- 7. test_upsert_summary_updates_remark_fields_on_existing_row ----------
+
+
+async def test_upsert_summary_updates_remark_fields_on_existing_row(db_session):
+    await _create_employee(db_session, emp_id="E011")
+    await upsert_summary(
+        db_session,
+        emp_id="E011",
+        date=datetime.date(2026, 5, 14),
+        first_clock_in=None,
+        last_clock_out=None,
+        status=AttendanceStatus.ABSENT,
+    )
+    updated = await upsert_summary(
+        db_session,
+        emp_id="E011",
+        date=datetime.date(2026, 5, 14),
+        first_clock_in=None,
+        last_clock_out=None,
+        status=AttendanceStatus.LEAVE,
+        leave_type="病假",
+        remark=None,
+    )
+    assert updated.status == AttendanceStatus.LEAVE
+    assert updated.leave_type == "病假"
+    assert updated.remark is None
