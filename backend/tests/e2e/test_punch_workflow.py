@@ -340,7 +340,7 @@ class TestFullReportingFlow:
         assert csv_export_resp.status_code == 200
         assert "text/csv" in csv_export_resp.headers.get("content-type", "")
         csv_text = csv_export_resp.text
-        assert "emp_id" in csv_text  # header row
+        assert "員工編號" in csv_text  # Chinese header row
         assert "EMP001" in csv_text  # data row
 
 

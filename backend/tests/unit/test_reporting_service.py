@@ -305,7 +305,8 @@ async def test_generate_summaries_for_all_employees(
 
 @freeze_time("2026-03-19 20:00:00")
 async def test_export_csv_format(db_session: AsyncSession) -> None:
-    """Returns CSV string with correct headers."""
+    """Returns CSV string with Chinese headers + new columns."""
+    from app.repositories import monthly_submission_repository
     from app.services.reporting_service import export_attendance, generate_daily_summary
 
     await _create_employee(db_session, "EMP030", name="Alice", department="Engineering")
@@ -319,6 +320,9 @@ async def test_export_csv_format(db_session: AsyncSession) -> None:
     )
 
     await generate_daily_summary(db_session, "EMP030", target_date)
+    await monthly_submission_repository.upsert(
+        db_session, emp_id="EMP030", year=2026, month=3
+    )
 
     csv_output = await export_attendance(
         db_session,
@@ -330,22 +334,18 @@ async def test_export_csv_format(db_session: AsyncSession) -> None:
     reader = csv.reader(io.StringIO(csv_output))
     rows = list(reader)
 
-    # Header row
+    # Header row (Chinese)
     assert rows[0] == [
-        "emp_id",
-        "name",
-        "department",
-        "date",
-        "first_clock_in",
-        "last_clock_out",
-        "status",
+        "員工編號", "姓名", "部門", "日期",
+        "班別時間", "上班時間", "下班時間",
+        "狀態", "備註", "遲到理由", "送單狀態",
     ]
     # Data row
     assert len(rows) == 2
     assert rows[1][0] == "EMP030"
     assert rows[1][1] == "Alice"
     assert rows[1][2] == "Engineering"
-    assert rows[1][6] == "NORMAL"
+    assert rows[1][7] == "正常"  # status: NORMAL → 正常
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +356,7 @@ async def test_export_csv_format(db_session: AsyncSession) -> None:
 @freeze_time("2026-03-19 20:00:00")
 async def test_export_json_format(db_session: AsyncSession) -> None:
     """Returns JSON string with correct structure."""
+    from app.repositories import monthly_submission_repository
     from app.services.reporting_service import export_attendance, generate_daily_summary
 
     await _create_employee(db_session, "EMP031", name="Bob", department="Sales")
@@ -369,6 +370,9 @@ async def test_export_json_format(db_session: AsyncSession) -> None:
     )
 
     await generate_daily_summary(db_session, "EMP031", target_date)
+    await monthly_submission_repository.upsert(
+        db_session, emp_id="EMP031", year=2026, month=3
+    )
 
     json_output = await export_attendance(
         db_session,
@@ -397,6 +401,7 @@ async def test_export_json_format(db_session: AsyncSession) -> None:
 @freeze_time("2026-03-20 20:00:00")
 async def test_export_date_range_filter(db_session: AsyncSession) -> None:
     """Only includes summaries within the requested date range."""
+    from app.repositories import monthly_submission_repository
     from app.services.reporting_service import export_attendance, generate_daily_summary
 
     await _create_employee(db_session, "EMP032", name="Carol", department="Engineering")
@@ -411,6 +416,9 @@ async def test_export_date_range_filter(db_session: AsyncSession) -> None:
             db_session, "EMP032", datetime.datetime(2026, 3, day, 18, 5)
         )
         await generate_daily_summary(db_session, "EMP032", d)
+    await monthly_submission_repository.upsert(
+        db_session, emp_id="EMP032", year=2026, month=3
+    )
 
     # Export only Mar 19-20
     csv_output = await export_attendance(
@@ -437,6 +445,7 @@ async def test_export_date_range_filter(db_session: AsyncSession) -> None:
 @freeze_time("2026-03-19 20:00:00")
 async def test_export_department_filter(db_session: AsyncSession) -> None:
     """Filter export by department."""
+    from app.repositories import monthly_submission_repository
     from app.services.reporting_service import export_attendance, generate_daily_summary
 
     await _create_employee(db_session, "EMP040", name="Dave", department="Engineering")
@@ -452,6 +461,9 @@ async def test_export_department_filter(db_session: AsyncSession) -> None:
             db_session, emp_id, datetime.datetime(2026, 3, 19, 18, 5)
         )
         await generate_daily_summary(db_session, emp_id, target_date)
+        await monthly_submission_repository.upsert(
+            db_session, emp_id=emp_id, year=2026, month=3
+        )
 
     # Export only Engineering
     json_output = await export_attendance(

@@ -19,7 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.daily_attendance_summary import AttendanceStatus, DailyAttendanceSummary
 from app.repositories import attendance_repository, employee_repository, summary_repository
-from app.repositories import monthly_submission_repository, system_config_repository
+from app.repositories import (
+    monthly_submission_repository,
+    reason_repository,
+    system_config_repository,
+)
 from app.utils.taiwan_calendar import (
     DayInfo,
     is_workday_from_data,
@@ -27,6 +31,32 @@ from app.utils.taiwan_calendar import (
 )
 
 DEFAULT_GRACE_MINUTES = 5
+
+CHINESE_HEADERS = [
+    "員工編號", "姓名", "部門", "日期",
+    "班別時間", "上班時間", "下班時間",
+    "狀態", "備註", "遲到理由", "送單狀態",
+]
+
+STATUS_ZH = {
+    "NORMAL": "正常",
+    "LATE": "遲到",
+    "EARLY_LEAVE": "早退",
+    "LATE_AND_EARLY_LEAVE": "遲到且早退",
+    "ABNORMAL": "異常",
+    "ABSENT": "缺勤",
+    "LEAVE": "請假",
+}
+
+
+def _format_shift_time(start: datetime.time, end: datetime.time) -> str:
+    return f"{start.strftime('%H:%M')} - {end.strftime('%H:%M')}"
+
+
+def _format_remark(leave_type: str | None, remark: str | None) -> str:
+    if leave_type and remark:
+        return f"{leave_type}·{remark}"
+    return leave_type or remark or ""
 
 
 def calculate_status(
@@ -337,30 +367,42 @@ async def export_attendance(
     department: str | None = None,
     emp_id: str | None = None,
     include_terminated: bool = False,
+    submission_filter: Literal["submitted", "unsubmitted", "all"] = "submitted",
 ) -> str | bytes:
     """Export attendance summaries as CSV, JSON, or Excel.
+
+    CSV / Excel output uses Chinese headers and Chinese-localized status and
+    submission values. JSON output preserves English keys and raw enum values.
+
+    Columns (CSV/Excel):
+        員工編號, 姓名, 部門, 日期, 班別時間, 上班時間, 下班時間,
+        狀態, 備註, 遲到理由, 送單狀態
 
     Parameters
     ----------
     session:
         The async database session.
-    start_date:
-        Start of the date range (inclusive).
-    end_date:
-        End of the date range (inclusive).
+    start_date / end_date:
+        Inclusive date range.
     format:
         ``"csv"``, ``"json"``, or ``"xlsx"``.
     department:
         Optional department filter.
     emp_id:
-        Optional individual employee filter.
+        Optional individual employee filter (always honored — LSA retention).
+    include_terminated:
+        When ``False`` (default) and no explicit ``emp_id`` is provided,
+        terminated employees are excluded.
+    submission_filter:
+        Controls visibility based on per-month submission state. One of
+        ``"submitted"`` (default), ``"unsubmitted"``, or ``"all"``.
 
     Returns
     -------
     str | bytes
         Formatted string (CSV/JSON) or bytes (xlsx).
     """
-    # Determine which employees to include
+    # --- determine employees ---
     if emp_id is not None:
         # Explicit emp_id always honored (terminated or not — LSA retention).
         emp = await employee_repository.find_by_id(session, emp_id)
@@ -376,7 +418,7 @@ async def export_attendance(
 
     emp_map = {emp.emp_id: emp for emp in employees}
 
-    # Gather all summaries across the date range for matching employees
+    # --- gather summaries ---
     all_summaries: list[DailyAttendanceSummary] = []
     for emp in employees:
         summaries = await summary_repository.find_by_employee(
@@ -387,28 +429,50 @@ async def export_attendance(
         )
         all_summaries.extend(summaries)
 
-    # Sort by date then emp_id for deterministic output
+    # --- preload reasons keyed by summary_id ---
+    summary_ids = [s.id for s in all_summaries if s.id is not None]
+    reasons = await reason_repository.find_by_summary_ids(session, summary_ids)
+    reason_map: dict[int, str] = {r.summary_id: r.reason for r in reasons}
+
+    # --- per-(year, month) submission cache ---
+    sub_cache: dict[tuple[int, int], set[str]] = {}
+
+    async def _is_submitted(e: str, d: datetime.date) -> bool:
+        key = (d.year, d.month)
+        if key not in sub_cache:
+            sub_cache[key] = await monthly_submission_repository.submitted_emp_ids(
+                session, year=d.year, month=d.month
+            )
+        return e in sub_cache[key]
+
+    # --- submission filter ---
+    if submission_filter != "all":
+        filtered: list[DailyAttendanceSummary] = []
+        for s in all_summaries:
+            sub = await _is_submitted(s.emp_id, s.date)
+            if submission_filter == "submitted" and sub:
+                filtered.append(s)
+            elif submission_filter == "unsubmitted" and not sub:
+                filtered.append(s)
+        all_summaries = filtered
+
     all_summaries.sort(key=lambda s: (s.date, s.emp_id))
 
-    # Build row dicts
-    headers = [
-        "emp_id",
-        "name",
-        "department",
-        "date",
-        "first_clock_in",
-        "last_clock_out",
-        "status",
-    ]
-
+    # --- build English-keyed rows (JSON path uses these directly) ---
     rows: list[dict[str, str]] = []
     for s in all_summaries:
         emp = emp_map.get(s.emp_id)
+        sub = await _is_submitted(s.emp_id, s.date)
         rows.append({
             "emp_id": s.emp_id,
             "name": emp.name if emp else "",
             "department": emp.department if emp else "",
             "date": s.date.isoformat(),
+            "shift_time": (
+                _format_shift_time(emp.shift_start_time, emp.shift_end_time)
+                if emp
+                else ""
+            ),
             "first_clock_in": (
                 s.first_clock_in.isoformat() if s.first_clock_in else ""
             ),
@@ -416,10 +480,30 @@ async def export_attendance(
                 s.last_clock_out.isoformat() if s.last_clock_out else ""
             ),
             "status": s.status.value,
+            "remark": _format_remark(s.leave_type, s.remark),
+            "reason": reason_map.get(s.id or -1, ""),
+            "submission_status": "submitted" if sub else "unsubmitted",
         })
 
     if format == "json":
         return json.dumps(rows, ensure_ascii=False)
+
+    # --- translate to Chinese for CSV / Excel ---
+    zh_rows: list[list[str]] = []
+    for row in rows:
+        zh_rows.append([
+            row["emp_id"],
+            row["name"],
+            row["department"],
+            row["date"],
+            row["shift_time"],
+            row["first_clock_in"],
+            row["last_clock_out"],
+            STATUS_ZH.get(row["status"], row["status"]),
+            row["remark"],
+            row["reason"],
+            "已送單" if row["submission_status"] == "submitted" else "未送單",
+        ])
 
     if format == "xlsx":
         from openpyxl import Workbook
@@ -429,23 +513,22 @@ async def export_attendance(
         ws = wb.active
         ws.title = "Attendance Report"
 
-        # Header row
         bold_font = Font(bold=True)
-        for col_idx, header in enumerate(headers, 1):
+        for col_idx, header in enumerate(CHINESE_HEADERS, 1):
             cell = ws.cell(row=1, column=col_idx, value=header)
             cell.font = bold_font
 
-        # Data rows
-        for row_idx, row in enumerate(rows, 2):
-            for col_idx, header in enumerate(headers, 1):
-                ws.cell(row=row_idx, column=col_idx, value=row[header])
+        for row_idx, row_values in enumerate(zh_rows, 2):
+            for col_idx, value in enumerate(row_values, 1):
+                ws.cell(row=row_idx, column=col_idx, value=value)
 
-        # Auto-size columns
-        for col_idx, header in enumerate(headers, 1):
+        for col_idx, header in enumerate(CHINESE_HEADERS, 1):
             max_len = len(header)
-            for row in rows:
-                max_len = max(max_len, len(str(row[header])))
-            ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = max_len + 2
+            for row_values in zh_rows:
+                max_len = max(max_len, len(str(row_values[col_idx - 1])))
+            ws.column_dimensions[
+                ws.cell(row=1, column=col_idx).column_letter
+            ].width = max_len + 2
 
         ws.auto_filter.ref = ws.dimensions
 
@@ -456,8 +539,8 @@ async def export_attendance(
     # Default: CSV
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(headers)
-    for row in rows:
-        writer.writerow([row[h] for h in headers])
+    writer.writerow(CHINESE_HEADERS)
+    for row_values in zh_rows:
+        writer.writerow(row_values)
 
     return output.getvalue()
