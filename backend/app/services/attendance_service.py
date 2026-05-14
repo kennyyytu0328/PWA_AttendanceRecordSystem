@@ -12,7 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.attendance_log import AttendanceLog, WorkMode
 from app.models.daily_attendance_summary import AttendanceStatus
 from app.models.employee import Role
-from app.repositories import attendance_repository, employee_repository, system_config_repository
+from app.repositories import (
+    attendance_repository,
+    employee_repository,
+    summary_repository,
+    system_config_repository,
+)
 from app.services import geolocation_service, reporting_service
 from app.services.permission_service import APPROVE_OVERRIDE, has_permission
 
@@ -298,44 +303,86 @@ async def bulk_override_punches(
         entry_date = entry["date"]
         clock_in_time = entry.get("first_clock_in")
         clock_out_time = entry.get("last_clock_out")
+        leave_type = entry.get("leave_type")
+        remark = entry.get("remark")
 
-        if clock_in_time is None and clock_out_time is None:
+        # Skip only when literally nothing changes
+        if (
+            clock_in_time is None
+            and clock_out_time is None
+            and leave_type is None
+            and remark is None
+        ):
             continue
 
-        # Mark existing logs as overridden
-        await attendance_repository.mark_overridden_by_employee_and_date(
-            session, emp_id, entry_date
-        )
-
-        # Create new clock-in log
-        if clock_in_time is not None:
-            clock_in_dt = datetime.datetime.combine(entry_date, clock_in_time)
-            clock_in_log = AttendanceLog(
-                emp_id=emp_id,
-                timestamp=clock_in_dt,
-                latitude=0.0,
-                longitude=0.0,
-                accuracy=0.0,
-                ip_address="override",
-                work_mode=WorkMode.OFFICE,
-                is_overridden=False,
+        # Handle punches (existing behavior) — only touch logs when punches change.
+        if clock_in_time is not None or clock_out_time is not None:
+            # Mark existing logs as overridden
+            await attendance_repository.mark_overridden_by_employee_and_date(
+                session, emp_id, entry_date
             )
-            await attendance_repository.create_log(session, clock_in_log)
 
-        # Create new clock-out log
-        if clock_out_time is not None:
-            clock_out_dt = datetime.datetime.combine(entry_date, clock_out_time)
-            clock_out_log = AttendanceLog(
-                emp_id=emp_id,
-                timestamp=clock_out_dt,
-                latitude=0.0,
-                longitude=0.0,
-                accuracy=0.0,
-                ip_address="override",
-                work_mode=WorkMode.OFFICE,
-                is_overridden=False,
+            # Create new clock-in log
+            if clock_in_time is not None:
+                clock_in_dt = datetime.datetime.combine(entry_date, clock_in_time)
+                clock_in_log = AttendanceLog(
+                    emp_id=emp_id,
+                    timestamp=clock_in_dt,
+                    latitude=0.0,
+                    longitude=0.0,
+                    accuracy=0.0,
+                    ip_address="override",
+                    work_mode=WorkMode.OFFICE,
+                    is_overridden=False,
+                )
+                await attendance_repository.create_log(session, clock_in_log)
+
+            # Create new clock-out log
+            if clock_out_time is not None:
+                clock_out_dt = datetime.datetime.combine(entry_date, clock_out_time)
+                clock_out_log = AttendanceLog(
+                    emp_id=emp_id,
+                    timestamp=clock_out_dt,
+                    latitude=0.0,
+                    longitude=0.0,
+                    accuracy=0.0,
+                    ip_address="override",
+                    work_mode=WorkMode.OFFICE,
+                    is_overridden=False,
+                )
+                await attendance_repository.create_log(session, clock_out_log)
+
+        # Stamp leave_type / remark onto the existing summary (or create a
+        # placeholder) so generate_daily_summary preserves them.
+        if leave_type is not None or remark is not None:
+            existing_summaries = await summary_repository.find_by_employee(
+                session, emp_id, start_date=entry_date, end_date=entry_date
             )
-            await attendance_repository.create_log(session, clock_out_log)
+            if existing_summaries:
+                existing = existing_summaries[0]
+                await summary_repository.upsert_summary(
+                    session,
+                    emp_id=emp_id,
+                    date=entry_date,
+                    first_clock_in=existing.first_clock_in,
+                    last_clock_out=existing.last_clock_out,
+                    status=existing.status,  # placeholder; regenerated next
+                    leave_type=leave_type,
+                    remark=remark,
+                )
+            else:
+                # No existing summary yet — create one with ABSENT placeholder;
+                # generate_daily_summary will overwrite the status.
+                await summary_repository.upsert_summary(
+                    session,
+                    emp_id=emp_id,
+                    date=entry_date,
+                    first_clock_in=None,
+                    last_clock_out=None,
+                    status=AttendanceStatus.ABSENT,
+                    leave_type=leave_type,
+                    remark=remark,
+                )
 
         # Recalculate summary
         summary = await reporting_service.generate_daily_summary(

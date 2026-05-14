@@ -213,6 +213,8 @@ async def bulk_override(
                     "date": entry.date,
                     "first_clock_in": entry.first_clock_in,
                     "last_clock_out": entry.last_clock_out,
+                    "leave_type": entry.leave_type,
+                    "remark": entry.remark,
                 }
                 for entry in body.entries
             ],

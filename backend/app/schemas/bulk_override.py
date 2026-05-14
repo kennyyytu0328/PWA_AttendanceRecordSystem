@@ -14,6 +14,8 @@ class BulkOverrideEntry(BaseModel):
     date: datetime.date
     first_clock_in: Optional[datetime.time] = None
     last_clock_out: Optional[datetime.time] = None
+    leave_type: Optional[str] = Field(default=None, max_length=50)
+    remark: Optional[str] = Field(default=None, max_length=500)
 
 
 class BulkOverrideRequest(BaseModel):
