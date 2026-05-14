@@ -143,6 +143,9 @@ async def get_my_summaries(
         start_date=start_date,
         end_date=end_date,
         emp_id=target_emp_id,
+        # Editing surface — never hide unsubmitted rows. The whole point of
+        # the monthly-override page is to prepare data *before* submission.
+        submission_filter="all",
     )
     return [
         {
@@ -154,6 +157,8 @@ async def get_my_summaries(
                 s.last_clock_out.isoformat() if s.last_clock_out else None
             ),
             "status": s.status.value,
+            "leave_type": s.leave_type,
+            "remark": s.remark,
         }
         for s in summaries
     ]

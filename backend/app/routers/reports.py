@@ -19,19 +19,19 @@ from app.services import reporting_service
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
-_PRIVILEGED_ROLES = {Role.HR.value, Role.ADMIN.value}
-
-
 def _normalize_submission_filter(value: str, role: str) -> str:
-    """Force non-HR/non-ADMIN users to the 'submitted' view.
+    """Validate the submission filter value.
 
     Unknown values silently coerce to 'submitted' (safest default).
+
+    Note: this endpoint requires MANAGER+ role (enforced upstream), so all
+    callers reaching this code legitimately need to see team punches.
+    Managers need 'all' for daily team monitoring (the team page);
+    HR/ADMIN need the full toggle on the reports page. UI gating decides
+    which controls are exposed per role — the backend just validates.
     """
     allowed = {"submitted", "unsubmitted", "all"}
-    safe = value if value in allowed else "submitted"
-    if role not in _PRIVILEGED_ROLES:
-        return "submitted"
-    return safe
+    return value if value in allowed else "submitted"
 
 
 def _format_shift_time(emp) -> str:

@@ -70,7 +70,7 @@ export default function TeamPage() {
         const [data, summaries] = await Promise.all([
           apiClient.get<AttendanceLog[]>(endpoint),
           apiClient.get<{ emp_id: string; date: string; status: string; reason?: string }[]>(
-            `/api/reports/daily?start_date=${start}&end_date=${end}`,
+            `/api/reports/daily?start_date=${start}&end_date=${end}&submission_filter=all`,
           ).catch(() => [] as { emp_id: string; date: string; status: string; reason?: string }[]),
         ]);
         setLogs(data);

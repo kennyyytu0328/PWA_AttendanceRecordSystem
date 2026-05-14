@@ -23,7 +23,7 @@ async def get_leave_types(
 ) -> LeaveTypesResponse:
     """Return the configured leave types. Any authenticated user."""
     types = await system_config_repository.get_leave_types(session)
-    return LeaveTypesResponse(types=types)
+    return LeaveTypesResponse(leave_types=types)
 
 
 @router.put("", response_model=LeaveTypesResponse)
@@ -34,6 +34,6 @@ async def put_leave_types(
 ) -> LeaveTypesResponse:
     """Replace the configured leave types. Requires HR or above."""
     types = await system_config_repository.set_leave_types(
-        session, body.types, updated_by=user["sub"]
+        session, body.leave_types, updated_by=user["sub"]
     )
-    return LeaveTypesResponse(types=types)
+    return LeaveTypesResponse(leave_types=types)

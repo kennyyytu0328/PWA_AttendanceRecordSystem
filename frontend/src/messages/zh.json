@@ -301,6 +301,7 @@
     "previousMonth": "上個月",
     "nextMonth": "下個月",
     "scrollHint": "提示：左右滑動可查看所有欄位",
+    "timeFormatHint": "請以 24 小時制輸入 4 位數字 (冒號會自動帶入)，例如下午 5:30 請輸入 1730，不是 0530",
     "remark": "備註",
     "leaveType": "假別",
     "leaveTypeNone": "— 無 —",

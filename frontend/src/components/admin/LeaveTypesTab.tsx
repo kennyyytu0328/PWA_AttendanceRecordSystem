@@ -121,23 +121,23 @@ export function LeaveTypesTab() {
           )}
 
           {leaveTypes.length > 0 && (
-            <ul className="mb-4 space-y-2">
+            <ul className="mb-4 flex flex-wrap gap-2">
               {leaveTypes.map((type) => (
                 <li
                   key={type}
-                  className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 py-1 pr-1 pl-3 text-sm text-rose-800"
                 >
-                  <span className="text-sm text-gray-800">{type}</span>
+                  <span>{type}</span>
                   <button
                     type="button"
                     onClick={() => handleRemove(type)}
                     disabled={isSubmitting}
                     data-testid={`leave-types-remove-${type}`}
-                    className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                    className="rounded-full p-0.5 text-rose-400 transition-colors hover:bg-rose-200 hover:text-rose-700 disabled:opacity-50"
                     title={t("admin.leaveTypesRemove")}
                     aria-label={`${t("admin.leaveTypesRemove")} ${type}`}
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-3.5 w-3.5" />
                   </button>
                 </li>
               ))}

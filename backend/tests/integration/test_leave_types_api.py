@@ -66,7 +66,7 @@ async def test_get_leave_types_returns_seeded_defaults(
         headers={"Authorization": f"Bearer {token}"},
     )
     assert res.status_code == 200, res.text
-    types = res.json()["types"]
+    types = res.json()["leave_types"]
     assert "特休" in types
     assert "公假" in types
 
@@ -78,7 +78,7 @@ async def test_put_leave_types_requires_hr(
     token = _make_token("EMP_PUT", Role.EMPLOYEE)
     res = await client.put(
         "/api/admin/leave-types",
-        json={"types": ["X", "Y"]},
+        json={"leave_types": ["X", "Y"]},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert res.status_code == 403
@@ -91,8 +91,8 @@ async def test_put_leave_types_as_hr_updates(
     hr_token = _make_token("HR_PUT", Role.HR)
     res = await client.put(
         "/api/admin/leave-types",
-        json={"types": ["新假別A", "新假別B"]},
+        json={"leave_types": ["新假別A", "新假別B"]},
         headers={"Authorization": f"Bearer {hr_token}"},
     )
     assert res.status_code == 200, res.text
-    assert res.json()["types"] == ["新假別A", "新假別B"]
+    assert res.json()["leave_types"] == ["新假別A", "新假別B"]

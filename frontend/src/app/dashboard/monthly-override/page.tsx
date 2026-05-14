@@ -348,10 +348,20 @@ export default function MonthlyOverridePage() {
     };
   }, [targetEmpId, year, month]);
 
-  // Handle time input changes — always normalize to HH:MM (drop seconds)
+  // Handle time input changes. Free-form text input is used (instead of
+  // <input type="time">) so the format is locked to 24h HH:MM regardless of
+  // the user's OS locale — type="time" follows Windows regional settings
+  // and shows AM/PM for en-US users, which is annoying for our Taiwan users.
+  // We strip non-digits, auto-insert ":" after 2 digits, cap at 5 chars.
+  const normalizeTimeInput = (raw: string): string => {
+    const digits = raw.replace(/\D/g, "").slice(0, 4);
+    if (digits.length <= 2) return digits;
+    return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+  };
+
   const handleClockInChange = useCallback(
     (date: string, value: string) => {
-      const normalized = value.slice(0, 5);
+      const normalized = normalizeTimeInput(value);
       setRows((prev) =>
         prev.map((row) =>
           row.date === date ? { ...row, clockIn: normalized } : row,
@@ -363,7 +373,7 @@ export default function MonthlyOverridePage() {
 
   const handleClockOutChange = useCallback(
     (date: string, value: string) => {
-      const normalized = value.slice(0, 5);
+      const normalized = normalizeTimeInput(value);
       setRows((prev) =>
         prev.map((row) =>
           row.date === date ? { ...row, clockOut: normalized } : row,
@@ -684,6 +694,17 @@ export default function MonthlyOverridePage() {
           </p>
         )}
 
+        {/* 24-hour time format hint — avoids 0530 vs 17:30 mistakes */}
+        {!isLoading && (
+          <div
+            role="note"
+            className="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+          >
+            <span aria-hidden="true">⏰</span>
+            <span>{t("monthlyOverride.timeFormatHint")}</span>
+          </div>
+        )}
+
         {/* Calendar Table */}
         {!isLoading && (
           <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
@@ -701,9 +722,11 @@ export default function MonthlyOverridePage() {
                   </th>
                   <th className="px-4 py-3 font-medium text-gray-600">
                     {t("monthlyOverride.clockIn")}
+                    <span className="ml-1 font-normal text-gray-400">(24h)</span>
                   </th>
                   <th className="px-4 py-3 font-medium text-gray-600">
                     {t("monthlyOverride.clockOut")}
+                    <span className="ml-1 font-normal text-gray-400">(24h)</span>
                   </th>
                   <th className="px-4 py-3 font-medium text-gray-600">
                     {t("monthlyOverride.leaveType")}
@@ -743,14 +766,17 @@ export default function MonthlyOverridePage() {
                     <td className="px-4 py-3">
                       {row.isEditable ? (
                         <input
-                          type="time"
-                          step={60}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+                          placeholder="HH:MM"
+                          maxLength={5}
                           data-testid="clock-in-input"
                           value={row.clockIn}
                           onChange={(e) =>
                             handleClockInChange(row.date, e.target.value)
                           }
-                          className="rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-1 focus:ring-[#4ec6c1] focus:outline-none"
+                          className="w-20 rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-1 focus:ring-[#4ec6c1] focus:outline-none"
                         />
                       ) : (
                         <span className="text-gray-400">-</span>
@@ -759,14 +785,17 @@ export default function MonthlyOverridePage() {
                     <td className="px-4 py-3">
                       {row.isEditable ? (
                         <input
-                          type="time"
-                          step={60}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+                          placeholder="HH:MM"
+                          maxLength={5}
                           data-testid="clock-out-input"
                           value={row.clockOut}
                           onChange={(e) =>
                             handleClockOutChange(row.date, e.target.value)
                           }
-                          className="rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-1 focus:ring-[#4ec6c1] focus:outline-none"
+                          className="w-20 rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-1 focus:ring-[#4ec6c1] focus:outline-none"
                         />
                       ) : (
                         <span className="text-gray-400">-</span>

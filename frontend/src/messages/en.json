@@ -301,6 +301,7 @@
     "previousMonth": "Previous Month",
     "nextMonth": "Next Month",
     "scrollHint": "Tip: swipe sideways to see all columns",
+    "timeFormatHint": "Type 4 digits in 24-hour format — the colon is added automatically. e.g. 5:30 PM → type 1730 (not 0530).",
     "remark": "Remark",
     "leaveType": "Leave Type",
     "leaveTypeNone": "— None —",

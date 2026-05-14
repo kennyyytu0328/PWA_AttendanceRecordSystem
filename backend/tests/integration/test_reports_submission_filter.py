@@ -166,34 +166,58 @@ async def test_daily_response_includes_new_fields(
     assert "reason" in row
 
 
-async def test_daily_employee_role_forces_submitted(
+async def test_daily_employee_role_blocked(
     client: AsyncClient, db_session: AsyncSession
 ):
-    """A non-HR user passing submission_filter=all is silently downgraded."""
-    from app.models.daily_attendance_summary import AttendanceStatus
-    from app.repositories import summary_repository
-
-    await _seed_employee(db_session, emp_id="EMP_DOWNGRADE")
-    target_date = datetime.date(2026, 5, 14)
-    await summary_repository.upsert_summary(
-        db_session,
-        emp_id="EMP_DOWNGRADE",
-        date=target_date,
-        first_clock_in=datetime.datetime(2026, 5, 14, 9, 0),
-        last_clock_out=datetime.datetime(2026, 5, 14, 18, 0),
-        status=AttendanceStatus.NORMAL,
-    )
-    # NO submission for EMP_DOWNGRADE.
-
-    emp_token = _make_token("EMP_DOWNGRADE", Role.EMPLOYEE)
+    """Plain EMPLOYEE cannot reach /api/reports/daily at all (403)."""
+    await _seed_employee(db_session, emp_id="EMP_BLOCKED")
+    emp_token = _make_token("EMP_BLOCKED", Role.EMPLOYEE)
     res = await client.get(
         "/api/reports/daily?start_date=2026-05-14&end_date=2026-05-14"
         "&submission_filter=all",
         headers={"Authorization": f"Bearer {emp_token}"},
     )
-    # /api/reports/daily currently requires MANAGER+ — accept 403 as N/A.
-    if res.status_code == 403:
-        return
+    assert res.status_code == 403
+
+
+async def test_daily_manager_can_request_all(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Managers need 'all' for daily team monitoring on the team page.
+
+    The previous behavior silently forced managers to 'submitted', which
+    blanked out the team page for the current month. The reports page
+    UI still hides the toggle from managers, but the backend must allow
+    the value so the team page can pass it.
+    """
+    from app.models.daily_attendance_summary import AttendanceStatus
+    from app.repositories import monthly_submission_repository, summary_repository
+
+    await _seed_employee(db_session, emp_id="MGR_ALL", role=Role.MANAGER)
+    await _seed_employee(db_session, emp_id="E_SUB_MGR")
+    await _seed_employee(db_session, emp_id="E_UNSUB_MGR")
+
+    target_date = datetime.date(2026, 5, 14)
+    for emp in ("E_SUB_MGR", "E_UNSUB_MGR"):
+        await summary_repository.upsert_summary(
+            db_session,
+            emp_id=emp,
+            date=target_date,
+            first_clock_in=datetime.datetime(2026, 5, 14, 9, 0),
+            last_clock_out=datetime.datetime(2026, 5, 14, 18, 0),
+            status=AttendanceStatus.NORMAL,
+        )
+    await monthly_submission_repository.upsert(
+        db_session, emp_id="E_SUB_MGR", year=2026, month=5
+    )
+
+    mgr_token = _make_token("MGR_ALL", Role.MANAGER)
+    res = await client.get(
+        "/api/reports/daily?start_date=2026-05-14&end_date=2026-05-14"
+        "&submission_filter=all",
+        headers={"Authorization": f"Bearer {mgr_token}"},
+    )
     assert res.status_code == 200, res.text
-    for row in res.json():
-        assert row["submission_status"] == "submitted"
+    ids = [r["emp_id"] for r in res.json()]
+    assert "E_SUB_MGR" in ids
+    assert "E_UNSUB_MGR" in ids
