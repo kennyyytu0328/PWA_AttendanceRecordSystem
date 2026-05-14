@@ -259,6 +259,8 @@
     "terminatedOption": "(Resigned)",
     "shiftTime": "Shift",
     "remark": "Remark",
+    "reason": "Reason",
+    "submissionFilter": "Submission Filter",
     "submissionStatus": "Submission Status",
     "submitted": "Submitted ✓",
     "unsubmitted": "Unsubmitted",

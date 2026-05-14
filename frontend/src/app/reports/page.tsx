@@ -10,7 +10,7 @@ import { useAuth } from "@/lib/auth-context";
 import { buildExportFilename } from "@/lib/exportFilename";
 import { useTranslation } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import type { DailyAttendanceSummary, Employee, Role } from "@/types";
+import type { DailyAttendanceSummary, Employee, Role, SubmissionFilter } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -21,6 +21,23 @@ const HR_ROLES: readonly Role[] = ["HR", "ADMIN"];
 
 function todayString(): string {
   return new Date().toISOString().split("T")[0];
+}
+
+function truncate(value: string | null | undefined, max = 50): string {
+  if (!value) return "-";
+  return value.length > max ? `${value.slice(0, max)}…` : value;
+}
+
+function SubmissionBadge({ status, label }: { readonly status: string; readonly label: string }) {
+  const cls =
+    status === "submitted"
+      ? "bg-green-100 text-green-700"
+      : "bg-gray-100 text-gray-600";
+  return (
+    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${cls}`}>
+      {label}
+    </span>
+  );
 }
 
 function formatTime(iso: string | null): string | null {
@@ -45,6 +62,7 @@ function StatusBadge({ status, label }: { readonly status: string; readonly labe
     LATE_AND_EARLY_LEAVE: "bg-red-100 text-red-700",
     ABNORMAL: "bg-gray-100 text-gray-600",
     ABSENT: "bg-red-100 text-red-700",
+    LEAVE: "bg-blue-100 text-blue-700",
   };
 
   return (
@@ -65,6 +83,7 @@ function DailyReportSection({ isHr }: { readonly isHr: boolean }) {
   const [department, setDepartment] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [submissionFilter, setSubmissionFilter] = useState<SubmissionFilter>("all");
   const [showTerminated, setShowTerminated] = useState(false);
   const [data, setData] = useState<readonly DailyAttendanceSummary[]>([]);
   const [departments, setDepartments] = useState<readonly string[]>([]);
@@ -108,6 +127,7 @@ function DailyReportSection({ isHr }: { readonly isHr: boolean }) {
     LATE_AND_EARLY_LEAVE: t("reports.statusLateAndEarlyLeave"),
     ABNORMAL: t("reports.statusAbnormal"),
     ABSENT: t("reports.statusAbsent"),
+    LEAVE: t("status.leave"),
   };
 
   const fetchReport = useCallback(async () => {
@@ -118,6 +138,7 @@ function DailyReportSection({ isHr }: { readonly isHr: boolean }) {
       if (department) params.set("department", department);
       if (selectedEmployee) params.set("emp_id", selectedEmployee);
       if (statusFilter) params.set("status", statusFilter);
+      if (isHr) params.set("submission_filter", submissionFilter);
       if (isHr && showTerminated) params.set("include_terminated", "true");
 
       const result = await apiClient.get<DailyAttendanceSummary[]>(
@@ -130,7 +151,7 @@ function DailyReportSection({ isHr }: { readonly isHr: boolean }) {
     } finally {
       setIsLoading(false);
     }
-  }, [startDate, endDate, department, selectedEmployee, statusFilter, isHr, showTerminated, t]);
+  }, [startDate, endDate, department, selectedEmployee, statusFilter, submissionFilter, isHr, showTerminated, t]);
 
   useEffect(() => {
     fetchReport();
@@ -222,6 +243,21 @@ function DailyReportSection({ isHr }: { readonly isHr: boolean }) {
             <option value="ABSENT">{t("reports.statusAbsent")}</option>
           </select>
         </div>
+        {isHr && (
+          <div>
+            <label className="block text-xs font-medium text-gray-500">{t("reports.submissionFilter")}</label>
+            <select
+              value={submissionFilter}
+              onChange={(e) => setSubmissionFilter(e.target.value as SubmissionFilter)}
+              className="mt-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-[#4ec6c1] focus:ring-2 focus:ring-[#4ec6c1] focus:outline-none"
+              aria-label={t("reports.submissionFilter")}
+            >
+              <option value="all">{t("reports.filterAll")}</option>
+              <option value="submitted">{t("reports.filterSubmitted")}</option>
+              <option value="unsubmitted">{t("reports.filterUnsubmitted")}</option>
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Error */}
@@ -261,6 +297,10 @@ function DailyReportSection({ isHr }: { readonly isHr: boolean }) {
                 <th className="px-4 py-3 font-medium text-gray-600">{t("reports.colFirstIn")}</th>
                 <th className="px-4 py-3 font-medium text-gray-600">{t("reports.colLastOut")}</th>
                 <th className="px-4 py-3 font-medium text-gray-600">{t("reports.colStatus")}</th>
+                <th className="px-4 py-3 font-medium text-gray-600">{t("reports.shiftTime")}</th>
+                <th className="px-4 py-3 font-medium text-gray-600">{t("reports.remark")}</th>
+                <th className="px-4 py-3 font-medium text-gray-600">{t("reports.reason")}</th>
+                <th className="px-4 py-3 font-medium text-gray-600">{t("reports.submissionStatus")}</th>
               </tr>
             </thead>
             <tbody>
@@ -272,6 +312,27 @@ function DailyReportSection({ isHr }: { readonly isHr: boolean }) {
                   <td className="px-4 py-3 text-gray-700">{formatTime(row.last_clock_out) ?? t("reports.noRecord")}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={row.status} label={statusLabelMap[row.status] ?? row.status} />
+                  </td>
+                  <td className="px-4 py-3 text-gray-700">{row.shift_time ?? "-"}</td>
+                  <td className="px-4 py-3 text-gray-700" title={row.remark ?? undefined}>
+                    {truncate(row.remark)}
+                  </td>
+                  <td className="px-4 py-3 text-gray-700" title={row.reason ?? undefined}>
+                    {truncate(row.reason)}
+                  </td>
+                  <td className="px-4 py-3">
+                    {row.submission_status ? (
+                      <SubmissionBadge
+                        status={row.submission_status}
+                        label={
+                          row.submission_status === "submitted"
+                            ? t("reports.submitted")
+                            : t("reports.unsubmitted")
+                        }
+                      />
+                    ) : (
+                      "-"
+                    )}
                   </td>
                 </tr>
               ))}
@@ -294,6 +355,7 @@ function ExportSection() {
   const [department, setDepartment] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState("");
   const [showTerminated, setShowTerminated] = useState(false);
+  const [submissionFilter, setSubmissionFilter] = useState<SubmissionFilter>("all");
   const [departments, setDepartments] = useState<readonly string[]>([]);
   const [employees, setEmployees] = useState<readonly Employee[]>([]);
   const [format, setFormat] = useState("csv");
@@ -339,6 +401,7 @@ function ExportSection() {
       if (department) params.set("department", department);
       if (selectedEmployee) params.set("emp_id", selectedEmployee);
       if (showTerminated) params.set("include_terminated", "true");
+      params.set("submission_filter", submissionFilter);
 
       const selectedEmp = selectedEmployee
         ? employees.find((e) => e.emp_id === selectedEmployee)
@@ -439,6 +502,19 @@ function ExportSection() {
               />
               {showTerminated ? t("reports.hideTerminated") : t("reports.showTerminated")}
             </label>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500">{t("reports.submissionFilter")}</label>
+            <select
+              value={submissionFilter}
+              onChange={(e) => setSubmissionFilter(e.target.value as SubmissionFilter)}
+              className="mt-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-[#4ec6c1] focus:ring-2 focus:ring-[#4ec6c1] focus:outline-none"
+              aria-label={`${t("reports.submissionFilter")} export`}
+            >
+              <option value="all">{t("reports.filterAll")}</option>
+              <option value="submitted">{t("reports.filterSubmitted")}</option>
+              <option value="unsubmitted">{t("reports.filterUnsubmitted")}</option>
+            </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500">{t("reports.format")}</label>

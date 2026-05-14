@@ -259,6 +259,8 @@
     "terminatedOption": "（已離職）",
     "shiftTime": "班別時間",
     "remark": "備註",
+    "reason": "遲到理由",
+    "submissionFilter": "送單篩選",
     "submissionStatus": "送單狀態",
     "submitted": "已送單 ✓",
     "unsubmitted": "未送單",

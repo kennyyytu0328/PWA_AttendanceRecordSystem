@@ -10,7 +10,12 @@ export type AttendanceStatus =
   | "EARLY_LEAVE"
   | "LATE_AND_EARLY_LEAVE"
   | "ABNORMAL"
-  | "ABSENT";
+  | "ABSENT"
+  | "LEAVE";
+
+export type SubmissionFilter = "all" | "submitted" | "unsubmitted";
+
+export type SubmissionStatus = "submitted" | "unsubmitted";
 
 // ---------------------------------------------------------------------------
 // Employee
@@ -104,6 +109,9 @@ export interface DailyAttendanceSummary {
   readonly status: AttendanceStatus;
   readonly leave_type?: string | null;
   readonly remark?: string | null;
+  readonly reason?: string | null;
+  readonly shift_time?: string | null;
+  readonly submission_status?: SubmissionStatus;
 }
 
 // ---------------------------------------------------------------------------
