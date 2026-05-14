@@ -26,6 +26,7 @@ from app.repositories import (
 )
 from app.utils.taiwan_calendar import (
     DayInfo,
+    fetch_calendar_from_cdn,
     is_workday_from_data,
     parse_calendar_json,
 )
@@ -46,7 +47,15 @@ STATUS_ZH = {
     "ABNORMAL": "異常",
     "ABSENT": "缺勤",
     "LEAVE": "請假",
+    # Synthetic statuses produced only by the export pipeline for non-workday
+    # continuity rows — never persisted to daily_attendance_summaries.
+    "HOLIDAY": "假日",
+    "WEEKEND": "週末",
 }
+
+# Statuses that mark a row as a non-working calendar day filler. Used for
+# Excel gray-fill styling and to identify filler rows during sort.
+_FILLER_STATUSES = frozenset({"HOLIDAY", "WEEKEND"})
 
 
 def _format_shift_time(start: datetime.time, end: datetime.time) -> str:
@@ -192,12 +201,42 @@ async def generate_daily_summary(
 async def _load_calendar_for_year(
     session: AsyncSession, year: int
 ) -> list[DayInfo]:
-    """Load cached Taiwan workday calendar for a year, or empty list if none."""
+    """Load Taiwan workday calendar for a year, auto-fetching from the CDN
+    on cache miss and persisting the result.
+
+    Without this auto-fetch, an empty cache silently degrades to a Mon-Fri
+    fallback in ``is_workday_from_data``, which incorrectly classifies
+    national holidays (e.g. 5/1 Labour Day on a Friday) as workdays and
+    generates spurious ABSENT summaries. Mirrors the behavior of
+    ``GET /api/config/workdays`` so reports/exports don't depend on
+    someone having visited the monthly-override page first.
+
+    Returns an empty list only if both the cache is empty AND the CDN
+    fetch fails — in that edge case the Mon-Fri fallback applies.
+    """
     cached = await system_config_repository.get_workday_calendar(session, year)
-    if cached is None:
+    if cached is not None:
+        raw_entries = cached.get("entries", []) if isinstance(cached, dict) else []
+        return parse_calendar_json(raw_entries)
+
+    # Cache miss — fetch from CDN and persist.
+    data = await fetch_calendar_from_cdn(year)
+    if not data:
         return []
-    raw_entries = cached.get("entries", []) if isinstance(cached, dict) else []
-    return parse_calendar_json(raw_entries)
+
+    raw_entries = [
+        {
+            "date": d.date.strftime("%Y%m%d"),
+            "week": d.weekday_zh,
+            "isHoliday": d.is_holiday,
+            "description": d.description,
+        }
+        for d in data
+    ]
+    await system_config_repository.set_workday_calendar(
+        session, year, raw_entries, updated_by="reporting_service"
+    )
+    return data
 
 
 async def generate_all_summaries(
@@ -402,39 +441,55 @@ async def export_attendance(
     str | bytes
         Formatted string (CSV/JSON) or bytes (xlsx).
     """
-    # --- determine employees ---
+    # --- gather summaries via get_daily_report so the calendar / holiday /
+    #     submission_filter logic stays in one place. Reading
+    #     daily_attendance_summaries directly would leak stale ABSENT rows
+    #     persisted before the Taiwan calendar was cached (e.g. 5/1 Labour
+    #     Day was generated as ABSENT under the Mon-Fri fallback).
+    all_summaries = await get_daily_report(
+        session,
+        start_date=start_date,
+        end_date=end_date,
+        department=department,
+        emp_id=emp_id,
+        include_terminated=include_terminated,
+        submission_filter=submission_filter,
+    )
+
+    # --- determine employees in scope for the *export* (independent of
+    #     whether each one happens to have a real summary in this range).
+    #     Needed so the holiday/weekend filler logic can emit continuity
+    #     rows even when the entire range falls on non-workdays.
     if emp_id is not None:
-        # Explicit emp_id always honored (terminated or not — LSA retention).
-        emp = await employee_repository.find_by_id(session, emp_id)
-        employees = [emp] if emp is not None else []
+        scope_emp = await employee_repository.find_by_id(session, emp_id)
+        scope_employees = [scope_emp] if scope_emp is not None else []
     elif department is not None:
-        employees = await employee_repository.find_by_department(
+        scope_employees = await employee_repository.find_by_department(
             session, department, include_terminated=include_terminated
         )
     else:
-        employees = await employee_repository.find_all(
+        scope_employees = await employee_repository.find_all(
             session, skip=0, limit=10000, include_terminated=include_terminated
         )
+    emp_map: dict[str, object] = {e.emp_id: e for e in scope_employees}
 
-    emp_map = {emp.emp_id: emp for emp in employees}
-
-    # --- gather summaries ---
-    all_summaries: list[DailyAttendanceSummary] = []
-    for emp in employees:
-        summaries = await summary_repository.find_by_employee(
-            session,
-            emp.emp_id,
-            start_date=start_date,
-            end_date=end_date,
-        )
-        all_summaries.extend(summaries)
+    # Cover anyone present in real summaries who somehow slipped through
+    # the scope query (e.g. an emp_id explicit filter where the row is
+    # already there).
+    for eid in {s.emp_id for s in all_summaries}:
+        if eid not in emp_map:
+            emp = await employee_repository.find_by_id(session, eid)
+            if emp is not None:
+                emp_map[eid] = emp
 
     # --- preload reasons keyed by summary_id ---
     summary_ids = [s.id for s in all_summaries if s.id is not None]
     reasons = await reason_repository.find_by_summary_ids(session, summary_ids)
     reason_map: dict[int, str] = {r.summary_id: r.reason for r in reasons}
 
-    # --- per-(year, month) submission cache ---
+    # --- per-(year, month) submission cache (used only for the row-level
+    #     submission_status label; the list is already filtered by
+    #     submission_filter inside get_daily_report).
     sub_cache: dict[tuple[int, int], set[str]] = {}
 
     async def _is_submitted(e: str, d: datetime.date) -> bool:
@@ -444,19 +499,6 @@ async def export_attendance(
                 session, year=d.year, month=d.month
             )
         return e in sub_cache[key]
-
-    # --- submission filter ---
-    if submission_filter != "all":
-        filtered: list[DailyAttendanceSummary] = []
-        for s in all_summaries:
-            sub = await _is_submitted(s.emp_id, s.date)
-            if submission_filter == "submitted" and sub:
-                filtered.append(s)
-            elif submission_filter == "unsubmitted" and not sub:
-                filtered.append(s)
-        all_summaries = filtered
-
-    all_summaries.sort(key=lambda s: (s.date, s.emp_id))
 
     # --- build English-keyed rows (JSON path uses these directly) ---
     rows: list[dict[str, str]] = []
@@ -485,6 +527,95 @@ async def export_attendance(
             "submission_status": "submitted" if sub else "unsubmitted",
         })
 
+    # --- synthesize holiday / weekend continuity rows ---
+    # The on-screen Reports page deliberately skips these; only the exported
+    # file gets them, so reviewers can scan a whole month without mentally
+    # filling in the gaps. Filler rows are never persisted.
+    #
+    # Classification:
+    #   * Day in calendar with is_holiday=True and a description → "HOLIDAY"
+    #     (e.g. 勞動節, 端午節) — description goes into the remark column.
+    #   * Day in calendar with is_holiday=True and empty description → "WEEKEND"
+    #     (calendar entry exists but it's just a regular Sat/Sun).
+    #   * Day not in calendar at all → fall back to weekday() >= 5 = WEEKEND.
+    #   * 補班 (is_makeup_workday=True) → workday, no filler row needed.
+    #
+    # Filler rows respect the same employee scope as the real rows (emp_map)
+    # and the same submission_filter (we skip filler rows for an employee
+    # whose month doesn't satisfy the filter).
+    if emp_map:
+        years_in_range: set[int] = set()
+        cursor = start_date
+        while cursor <= end_date:
+            years_in_range.add(cursor.year)
+            cursor += timedelta(days=1)
+        calendars: dict[int, list[DayInfo]] = {
+            y: await _load_calendar_for_year(session, y) for y in years_in_range
+        }
+
+        existing_pairs: set[tuple[str, datetime.date]] = {
+            (r["emp_id"], datetime.date.fromisoformat(r["date"])) for r in rows
+        }
+
+        cursor = start_date
+        while cursor <= end_date:
+            cal = calendars.get(cursor.year, [])
+            day_info = next((di for di in cal if di.date == cursor), None)
+
+            # 補班 (make-up workday) is a workday — skip filler.
+            if day_info is not None and day_info.is_makeup_workday:
+                cursor += timedelta(days=1)
+                continue
+
+            # Determine workday status.
+            if day_info is not None:
+                non_workday = day_info.is_holiday
+            else:
+                non_workday = cursor.weekday() >= 5
+
+            if not non_workday:
+                cursor += timedelta(days=1)
+                continue
+
+            # Classify HOLIDAY vs WEEKEND.
+            if day_info is not None and day_info.description:
+                filler_status = "HOLIDAY"
+                filler_remark = day_info.description
+            else:
+                filler_status = "WEEKEND"
+                filler_remark = ""
+
+            for emp_id_iter, emp in emp_map.items():
+                if (emp_id_iter, cursor) in existing_pairs:
+                    continue
+                sub = await _is_submitted(emp_id_iter, cursor)
+                # Honor submission_filter: skip filler rows that the user
+                # has explicitly filtered out.
+                if submission_filter == "submitted" and not sub:
+                    continue
+                if submission_filter == "unsubmitted" and sub:
+                    continue
+                rows.append({
+                    "emp_id": emp_id_iter,
+                    "name": emp.name,
+                    "department": emp.department,
+                    "date": cursor.isoformat(),
+                    "shift_time": _format_shift_time(
+                        emp.shift_start_time, emp.shift_end_time
+                    ),
+                    "first_clock_in": "",
+                    "last_clock_out": "",
+                    "status": filler_status,
+                    "remark": filler_remark,
+                    "reason": "",
+                    "submission_status": "submitted" if sub else "unsubmitted",
+                })
+
+            cursor += timedelta(days=1)
+
+    # Re-sort so filler rows interleave naturally with real rows by date.
+    rows.sort(key=lambda r: (r["date"], r["emp_id"]))
+
     if format == "json":
         return json.dumps(rows, ensure_ascii=False)
 
@@ -507,7 +638,7 @@ async def export_attendance(
 
     if format == "xlsx":
         from openpyxl import Workbook
-        from openpyxl.styles import Font
+        from openpyxl.styles import Font, PatternFill
 
         wb = Workbook()
         ws = wb.active
@@ -518,9 +649,22 @@ async def export_attendance(
             cell = ws.cell(row=1, column=col_idx, value=header)
             cell.font = bold_font
 
-        for row_idx, row_values in enumerate(zh_rows, 2):
+        # Light gray fill for holiday / weekend filler rows, so reviewers can
+        # visually distinguish "this day is not a workday" from real
+        # attendance rows at a glance.
+        filler_fill = PatternFill(
+            fill_type="solid", start_color="FFEFEFEF", end_color="FFEFEFEF"
+        )
+
+        # We rely on rows[] (the English-keyed dicts) and zh_rows[] (the
+        # Chinese-localized lists) staying index-aligned — they are produced
+        # together by the same loop above.
+        for row_idx, (row_dict, row_values) in enumerate(zip(rows, zh_rows), 2):
+            is_filler = row_dict["status"] in _FILLER_STATUSES
             for col_idx, value in enumerate(row_values, 1):
-                ws.cell(row=row_idx, column=col_idx, value=value)
+                cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                if is_filler:
+                    cell.fill = filler_fill
 
         for col_idx, header in enumerate(CHINESE_HEADERS, 1):
             max_len = len(header)
