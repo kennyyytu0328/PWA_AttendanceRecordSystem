@@ -2,7 +2,15 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import attendance, auth, employees, reasons, reports, system_config
+from app.routers import (
+    attendance,
+    auth,
+    employees,
+    monthly_submissions,
+    reasons,
+    reports,
+    system_config,
+)
 
 app = FastAPI(
     title="GoGoFresh Attendance System",
@@ -46,6 +54,7 @@ async def add_security_headers(request: Request, call_next) -> Response:
 app.include_router(attendance.router)
 app.include_router(auth.router)
 app.include_router(employees.router)
+app.include_router(monthly_submissions.router)
 app.include_router(reasons.router)
 app.include_router(reports.router)
 app.include_router(system_config.router)
