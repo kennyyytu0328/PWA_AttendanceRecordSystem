@@ -375,6 +375,25 @@ Employee can bulk-edit first clock-in and last clock-out times for any day of th
 
 ## Phase 14: UX Enhancements -- DONE
 
+### 14D: Leave Remarks + Monthly Submission + Chinese Export + ADMIN-only Delete -- DONE (2026-05-14)
+Nine-item meeting-minutes bundle from 2026-05-13. Reverses the prior HR-can-hard-delete decision (see CLAUDE.md #30).
+- [x] **Backend**: `AttendanceStatus.LEAVE` enum + `daily_attendance_summaries.leave_type` (max 50) + `remark` (max 500) columns (Alembic migration `f6a7b8c9d0e1`)
+- [x] **Backend**: `monthly_submissions` table with `UNIQUE(emp_id, year, month)`; repository + service + `POST/GET /api/monthly-submissions` (self-or-HR+)
+- [x] **Backend**: `system_config.leave_types` config; `GET /api/admin/leave-types` (any auth) + `PUT` (HR+)
+- [x] **Backend**: `calculate_status` short-circuits to LEAVE when `leave_type` is set; `generate_daily_summary` preserves leave fields; `generate_all_summaries` skips ABSENT for leave days
+- [x] **Backend**: bulk_override accepts leave_type/remark per entry (no-op rows with only leave fields persist)
+- [x] **Backend**: `/api/reports/daily` + `/api/reports/export` accept `submission_filter`; non-HR/non-ADMIN server-forced to `submitted`
+- [x] **Backend**: Export Chinese-ized headers + `shift_time` + `remark` + `reason` + `submission_status` columns; JSON keeps English
+- [x] **Backend**: `DELETE /api/employees/{id}` requires `Role.ADMIN` (reversed from HR); 409 LSA-retention guard retained
+- [x] **Frontend**: `RemarkCell` component (leave-type dropdown + remark input, React.memo, controlled)
+- [x] **Frontend**: `WarningModal` (month-level — lists all abnormal days; "返回修改" / "繼續送出"; Escape + backdrop dismiss)
+- [x] **Frontend**: Monthly-override page wires RemarkCell + WarningModal + "本月送單" button + submission-status badge
+- [x] **Frontend**: Reports page adds 班別時間 / 備註 / 遲到理由 / 送單狀態 columns + HR-only submission filter (submitted/unsubmitted/all)
+- [x] **Frontend**: Admin leave-types tab (list/add/remove/save); Delete button hidden for HR (ADMIN-only)
+- [x] **Frontend**: Typed API client modules `frontend/src/lib/api/monthly-submissions.ts` + `leave-types.ts`
+- [x] **i18n**: Added zh + en keys for status.leave, monthlyOverride.{remark,leaveType,leaveTypeNone,submitMonth,warningTitle,warningBody,backToEdit,proceed,submitting,submitSuccess,submitted,notSubmitted,submittedAt}, reports.{shiftTime,remark,reason,submissionStatus,submitted,unsubmitted,submissionFilter,filterAll,filterSubmitted,filterUnsubmitted}, admin.{leaveTypes,leaveTypesAdd,leaveTypesRemove,leaveTypes{Empty,Placeholder,Duplicate,Saved,SaveError,LoadError}}
+- [x] **Tests**: Backend test suite extended (333+ passing); Frontend +29 tests (124 passing total); Playwright stubs at `frontend/__tests__/e2e/monthly-submission-flow.spec.ts`
+
 ### 14A: Monthly Override Department Filter -- DONE
 - [x] `frontend/src/app/dashboard/monthly-override/page.tsx` — Added department filter dropdown (HR+ only) before employee selector; selecting a department filters the employee list; changing department resets employee selection
 - [x] `frontend/src/messages/en.json` / `zh.json` — Added `monthlyOverride.filterDepartment` and `monthlyOverride.allDepartments` i18n keys
