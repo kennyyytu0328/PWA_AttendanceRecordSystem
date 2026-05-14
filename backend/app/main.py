@@ -6,6 +6,7 @@ from app.routers import (
     attendance,
     auth,
     employees,
+    leave_types,
     monthly_submissions,
     reasons,
     reports,
@@ -54,6 +55,7 @@ async def add_security_headers(request: Request, call_next) -> Response:
 app.include_router(attendance.router)
 app.include_router(auth.router)
 app.include_router(employees.router)
+app.include_router(leave_types.router)
 app.include_router(monthly_submissions.router)
 app.include_router(reasons.router)
 app.include_router(reports.router)

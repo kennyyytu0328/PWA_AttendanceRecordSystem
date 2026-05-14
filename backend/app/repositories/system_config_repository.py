@@ -35,6 +35,32 @@ async def get_departments(session: AsyncSession) -> list[str]:
     return []
 
 
+async def get_leave_types(session: AsyncSession) -> list[str]:
+    """Return the list of configured leave types, defaulting to empty list."""
+    config = await get_by_key(session, "leave_types")
+    if config is None:
+        return []
+    value = config.value
+    if isinstance(value, dict) and "types" in value:
+        return list(value["types"])
+    return []
+
+
+async def set_leave_types(
+    session: AsyncSession,
+    types: list[str],
+    updated_by: str | None = None,
+) -> list[str]:
+    """Upsert the leave_types config entry. Returns the stored list."""
+    await set_config(
+        session,
+        key="leave_types",
+        value={"types": list(types)},
+        updated_by=updated_by,
+    )
+    return list(types)
+
+
 async def get_grace_period(session: AsyncSession) -> int:
     """Return the grace period in minutes from system config, defaulting to 5."""
     config = await get_by_key(session, "grace_period")
