@@ -122,10 +122,10 @@ async def update_employee(
 @router.delete("/{emp_id}")
 async def delete_employee(
     emp_id: str,
-    user: dict = require_role(Role.HR),
+    user: dict = require_role(Role.ADMIN),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Hard-delete an employee. Requires HR or higher role.
+    """Hard-delete an employee. Requires ADMIN role.
 
     Only permitted when the employee has no attendance records. Use the
     /terminate endpoint for employees with history (required by Taiwan

@@ -281,10 +281,13 @@ class TestDeleteEmployee:
     async def test_delete_employee_with_logs_blocked(
         self, client: AsyncClient, db_session: AsyncSession
     ):
-        """Hard delete must be refused when attendance_logs reference the employee."""
+        """Hard delete must be refused when attendance_logs reference the employee.
+
+        Uses ADMIN since DELETE is ADMIN-only (Task 10).
+        """
         from app.models.attendance_log import AttendanceLog, WorkMode
 
-        await _seed_employee(db_session, emp_id="HR001", role=Role.HR)
+        await _seed_employee(db_session, emp_id="ADMIN01", role=Role.ADMIN)
         await _seed_employee(db_session, emp_id="EMP002", role=Role.EMPLOYEE)
         db_session.add(
             AttendanceLog(
@@ -299,7 +302,7 @@ class TestDeleteEmployee:
         )
         await db_session.commit()
 
-        token = _make_token("HR001", Role.HR)
+        token = _make_token("ADMIN01", Role.ADMIN)
         resp = await client.delete(
             "/api/employees/EMP002",
             headers={"Authorization": f"Bearer {token}"},
