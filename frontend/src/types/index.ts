@@ -102,6 +102,8 @@ export interface DailyAttendanceSummary {
   readonly first_clock_in: string | null;
   readonly last_clock_out: string | null;
   readonly status: AttendanceStatus;
+  readonly leave_type?: string | null;
+  readonly remark?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -154,6 +156,8 @@ export interface BulkOverrideEntry {
   readonly date: string;
   readonly first_clock_in: string | null;
   readonly last_clock_out: string | null;
+  readonly leave_type?: string | null;
+  readonly remark?: string | null;
 }
 
 export interface BulkOverrideRequest {

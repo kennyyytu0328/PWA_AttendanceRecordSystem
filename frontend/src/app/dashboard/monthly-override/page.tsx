@@ -1,15 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Calendar, ChevronLeft, ChevronRight, Save } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, Save, Send } from "lucide-react";
 
 import { BackButton } from "@/components/BackButton";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { RemarkCell } from "@/components/RemarkCell";
+import { WarningModal, type AbnormalDay, type AbnormalStatus } from "@/components/WarningModal";
 
 import { apiClient } from "@/lib/api";
+import { leaveTypesApi } from "@/lib/api/leave-types";
+import {
+  monthlySubmissionsApi,
+  type SubmissionStatus,
+} from "@/lib/api/monthly-submissions";
 import { useAuth } from "@/lib/auth-context";
 import { useTranslation } from "@/lib/i18n";
 import type {
+  BulkOverrideEntry,
   BulkOverrideResponse,
   DailyAttendanceSummary,
   Employee,
@@ -58,6 +66,26 @@ interface DayRow {
   readonly clockOut: string;
   readonly status: string;
   readonly isEditable: boolean;
+  readonly leaveType: string | null;
+  readonly remark: string | null;
+}
+
+const ABNORMAL_STATUSES: ReadonlySet<string> = new Set([
+  "LATE",
+  "EARLY_LEAVE",
+  "LATE_AND_EARLY_LEAVE",
+  "ABSENT",
+]);
+
+function formatSubmittedAt(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
+  const da = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${mo}-${da} ${h}:${mi}`;
 }
 
 interface Message {
@@ -140,6 +168,17 @@ export default function MonthlyOverridePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
+
+  // Leave types (fetched once on mount)
+  const [leaveTypes, setLeaveTypes] = useState<readonly string[]>([]);
+
+  // Submission status for current (year, month, empId)
+  const [submissionStatus, setSubmissionStatus] =
+    useState<SubmissionStatus | null>(null);
+
+  // Submit-month flow
+  const [warningOpen, setWarningOpen] = useState(false);
+  const [pendingSubmit, setPendingSubmit] = useState(false);
 
   // Derived: unique departments & filtered employees
   const departments = Array.from(
@@ -241,6 +280,8 @@ export default function MonthlyOverridePage() {
           clockOut: summary ? extractTime(summary.last_clock_out) : "",
           status: summary?.status ?? "",
           isEditable,
+          leaveType: summary?.leave_type ?? null,
+          remark: summary?.remark ?? null,
         };
       });
 
@@ -257,6 +298,55 @@ export default function MonthlyOverridePage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Resolve which emp_id this page is acting on
+  const targetEmpId: string | null = isHrPlus
+    ? selectedEmpId || null
+    : user?.emp_id ?? null;
+
+  // Fetch leave types once on mount
+  useEffect(() => {
+    let cancelled = false;
+    async function loadLeaveTypes() {
+      try {
+        const data = await leaveTypesApi.list();
+        if (!cancelled) {
+          setLeaveTypes(Array.isArray(data?.leave_types) ? data.leave_types : []);
+        }
+      } catch {
+        // silent — feature still works with empty list
+      }
+    }
+    loadLeaveTypes();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Fetch submission status whenever target/year/month changes
+  useEffect(() => {
+    if (!targetEmpId) {
+      setSubmissionStatus(null);
+      return;
+    }
+    let cancelled = false;
+    async function loadStatus(empId: string) {
+      try {
+        const data = await monthlySubmissionsApi.getStatus(empId, year, month);
+        if (!cancelled) {
+          setSubmissionStatus(data);
+        }
+      } catch {
+        if (!cancelled) {
+          setSubmissionStatus(null);
+        }
+      }
+    }
+    loadStatus(targetEmpId);
+    return () => {
+      cancelled = true;
+    };
+  }, [targetEmpId, year, month]);
 
   // Handle time input changes — always normalize to HH:MM (drop seconds)
   const handleClockInChange = useCallback(
@@ -283,20 +373,43 @@ export default function MonthlyOverridePage() {
     [],
   );
 
+  const handleLeaveTypeChange = useCallback(
+    (date: string, value: string | null) => {
+      setRows((prev) =>
+        prev.map((row) =>
+          row.date === date ? { ...row, leaveType: value } : row,
+        ),
+      );
+    },
+    [],
+  );
+
+  const handleRemarkChange = useCallback((date: string, value: string) => {
+    const next = value === "" ? null : value;
+    setRows((prev) =>
+      prev.map((row) => (row.date === date ? { ...row, remark: next } : row)),
+    );
+  }, []);
+
   // Save overrides
   const handleSave = useCallback(async () => {
-    const changedEntries = rows
+    const changedEntries: BulkOverrideEntry[] = rows
       .filter((row, idx) => {
         const orig = originalRows[idx];
         return (
           row.isEditable &&
-          (row.clockIn !== orig.clockIn || row.clockOut !== orig.clockOut)
+          (row.clockIn !== orig.clockIn ||
+            row.clockOut !== orig.clockOut ||
+            row.leaveType !== orig.leaveType ||
+            row.remark !== orig.remark)
         );
       })
       .map((row) => ({
         date: row.date,
         first_clock_in: row.clockIn || null,
         last_clock_out: row.clockOut || null,
+        leave_type: row.leaveType,
+        remark: row.remark,
       }));
 
     if (changedEntries.length === 0) {
@@ -310,7 +423,7 @@ export default function MonthlyOverridePage() {
       const body: {
         year: number;
         month: number;
-        entries: typeof changedEntries;
+        entries: readonly BulkOverrideEntry[];
         emp_id?: string;
       } = {
         year,
@@ -341,7 +454,65 @@ export default function MonthlyOverridePage() {
     }
   }, [rows, originalRows, year, month, isHrPlus, selectedEmpId, t]);
 
+  // Build the list of abnormal days for the warning modal
+  const abnormalDays: readonly AbnormalDay[] = rows
+    .filter((row) => ABNORMAL_STATUSES.has(row.status))
+    .map((row) => ({
+      date: row.date,
+      status: row.status as AbnormalStatus,
+      leaveType: row.leaveType,
+      remark: row.remark,
+    }));
+
+  // Perform the actual submission against the API
+  const performSubmit = useCallback(async () => {
+    if (!targetEmpId) {
+      setMessage({ type: "error", text: t("monthlyOverride.selectEmployeeFirst") });
+      return;
+    }
+    setPendingSubmit(true);
+    setMessage(null);
+    try {
+      await monthlySubmissionsApi.submit(targetEmpId, year, month);
+      const status = await monthlySubmissionsApi.getStatus(
+        targetEmpId,
+        year,
+        month,
+      );
+      setSubmissionStatus(status);
+      setMessage({ type: "success", text: t("monthlyOverride.submitSuccess") });
+    } catch {
+      setMessage({ type: "error", text: t("monthlyOverride.submitError") });
+    } finally {
+      setPendingSubmit(false);
+      setWarningOpen(false);
+    }
+  }, [targetEmpId, year, month, t]);
+
+  // Click handler for "本月送單" — opens warning modal if abnormal days exist
+  const handleSubmitMonth = useCallback(() => {
+    if (!targetEmpId) {
+      setMessage({ type: "error", text: t("monthlyOverride.selectEmployeeFirst") });
+      return;
+    }
+    if (abnormalDays.length === 0) {
+      void performSubmit();
+      return;
+    }
+    setWarningOpen(true);
+  }, [targetEmpId, abnormalDays.length, performSubmit, t]);
+
+  const handleWarningProceed = useCallback(() => {
+    void performSubmit();
+  }, [performSubmit]);
+
+  const handleWarningBack = useCallback(() => {
+    setWarningOpen(false);
+  }, []);
+
   const monthLabel = `${year}-${String(month).padStart(2, "0")}`;
+  const isSubmitted = submissionStatus?.submitted === true;
+  const submittedAtLabel = formatSubmittedAt(submissionStatus?.submitted_at ?? null);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#e8faf9] via-[#edfbf0] to-[#f5fbe8] px-4 py-8">
@@ -432,8 +603,42 @@ export default function MonthlyOverridePage() {
             </div>
           )}
 
-          {/* Save Button */}
-          <div className="ml-auto">
+          {/* Submission status + Action buttons */}
+          <div className="ml-auto flex flex-wrap items-center gap-3">
+            {targetEmpId ? (
+              isSubmitted ? (
+                <span
+                  data-testid="submission-status-badge"
+                  className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700"
+                  title={submittedAtLabel ? `${t("monthlyOverride.submittedAt")}: ${submittedAtLabel}` : undefined}
+                >
+                  {t("monthlyOverride.submitted")}
+                  {submittedAtLabel ? (
+                    <span className="ml-1 font-normal text-green-600">
+                      {submittedAtLabel}
+                    </span>
+                  ) : null}
+                </span>
+              ) : (
+                <span
+                  data-testid="submission-status-badge"
+                  className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600"
+                >
+                  {t("monthlyOverride.notSubmitted")}
+                </span>
+              )
+            ) : null}
+            <button
+              type="button"
+              onClick={handleSubmitMonth}
+              disabled={pendingSubmit || !targetEmpId}
+              className="inline-flex items-center gap-2 rounded-lg border border-[#4ec6c1] bg-white px-5 py-2 text-sm font-medium text-[#4ec6c1] shadow-sm transition-colors hover:bg-[#e8faf9] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Send className="h-4 w-4" />
+              {pendingSubmit
+                ? t("monthlyOverride.submitting")
+                : t("monthlyOverride.submitMonth")}
+            </button>
             <button
               type="button"
               onClick={handleSave}
@@ -501,6 +706,12 @@ export default function MonthlyOverridePage() {
                     {t("monthlyOverride.clockOut")}
                   </th>
                   <th className="px-4 py-3 font-medium text-gray-600">
+                    {t("monthlyOverride.leaveType")}
+                  </th>
+                  <th className="px-4 py-3 font-medium text-gray-600">
+                    {t("monthlyOverride.remark")}
+                  </th>
+                  <th className="px-4 py-3 font-medium text-gray-600">
                     {t("monthlyOverride.status")}
                   </th>
                 </tr>
@@ -561,6 +772,30 @@ export default function MonthlyOverridePage() {
                         <span className="text-gray-400">-</span>
                       )}
                     </td>
+                    {row.isEditable ? (
+                      <td className="px-4 py-3" colSpan={2}>
+                        <RemarkCell
+                          leaveType={row.leaveType}
+                          remark={row.remark}
+                          leaveTypes={leaveTypes}
+                          onLeaveTypeChange={(v) =>
+                            handleLeaveTypeChange(row.date, v)
+                          }
+                          onRemarkChange={(v) =>
+                            handleRemarkChange(row.date, v)
+                          }
+                        />
+                      </td>
+                    ) : (
+                      <>
+                        <td className="px-4 py-3">
+                          <span className="text-gray-400">-</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-gray-400">-</span>
+                        </td>
+                      </>
+                    )}
                     <td className="px-4 py-3">
                       <StatusBadge status={row.status} t={t} />
                     </td>
@@ -572,6 +807,12 @@ export default function MonthlyOverridePage() {
           </div>
         )}
       </div>
+      <WarningModal
+        open={warningOpen}
+        abnormalDays={abnormalDays}
+        onBackToEdit={handleWarningBack}
+        onProceed={handleWarningProceed}
+      />
     </div>
   );
 }
