@@ -637,3 +637,44 @@ async def test_generate_daily_summary_preserves_existing_leave_type(
     assert summary.status == AttendanceStatus.LEAVE
     assert summary.leave_type == "特休"
     assert summary.remark == "上午"
+
+
+async def test_generate_all_summaries_does_not_create_absent_for_employee_on_leave(
+    db_session: AsyncSession,
+) -> None:
+    """An employee with a pre-set LEAVE summary should not also get ABSENT."""
+    from app.repositories import summary_repository
+    from app.services import reporting_service
+
+    # Seed two employees on a workday
+    await _create_employee(db_session, emp_id="E090")
+    await _create_employee(db_session, emp_id="E091")
+
+    # E090 has leave_type pre-set (no punches)
+    await summary_repository.upsert_summary(
+        db_session,
+        emp_id="E090",
+        date=datetime.date(2026, 5, 14),  # Thursday — a workday
+        first_clock_in=None,
+        last_clock_out=None,
+        status=AttendanceStatus.LEAVE,
+        leave_type="特休",
+        remark=None,
+    )
+    # E091 has nothing — should become ABSENT
+
+    summaries = await reporting_service.generate_all_summaries(
+        db_session, datetime.date(2026, 5, 14)
+    )
+
+    e090 = [s for s in summaries if s.emp_id == "E090"]
+    e091 = [s for s in summaries if s.emp_id == "E091"]
+
+    # E090 keeps its LEAVE summary (one row, not duplicated, not flipped to ABSENT)
+    assert len(e090) == 1
+    assert e090[0].status == AttendanceStatus.LEAVE
+    assert e090[0].leave_type == "特休"
+
+    # E091 gets ABSENT (control case)
+    assert len(e091) == 1
+    assert e091[0].status == AttendanceStatus.ABSENT
