@@ -17,6 +17,7 @@ class AttendanceStatus(str, enum.Enum):
     LATE_AND_EARLY_LEAVE = "LATE_AND_EARLY_LEAVE"
     ABNORMAL = "ABNORMAL"
     ABSENT = "ABSENT"
+    LEAVE = "LEAVE"
 
 
 class DailyAttendanceSummary(SQLModel, table=True):
@@ -35,3 +36,5 @@ class DailyAttendanceSummary(SQLModel, table=True):
     status: AttendanceStatus = Field(
         sa_column=sa.Column(sa.Enum(AttendanceStatus), nullable=False)
     )
+    leave_type: Optional[str] = Field(default=None, max_length=50)
+    remark: Optional[str] = Field(default=None, max_length=500)
