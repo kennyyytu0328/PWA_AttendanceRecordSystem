@@ -111,11 +111,19 @@ async def generate_daily_summary(
 ) -> DailyAttendanceSummary | None:
     """Build or upsert a daily attendance summary for one employee.
 
-    Returns ``None`` if the employee has no attendance logs on *date*.
+    Returns ``None`` if the employee has no attendance logs AND no existing
+    leave_type on *date*. Preserves any pre-set leave_type/remark across recompute.
     """
     employee = await employee_repository.find_by_id(session, emp_id)
     if employee is None:
         return None
+
+    # Read any existing summary's leave_type/remark so we preserve them
+    existing_rows = await summary_repository.find_by_employee(
+        session, emp_id, start_date=date, end_date=date
+    )
+    existing_leave_type = existing_rows[0].leave_type if existing_rows else None
+    existing_remark = existing_rows[0].remark if existing_rows else None
 
     first_log = await attendance_repository.find_first_clock_in(session, emp_id, date)
     last_log = await attendance_repository.find_last_clock_out(session, emp_id, date)
@@ -130,6 +138,7 @@ async def generate_daily_summary(
         first_clock_in,
         last_clock_out,
         grace_minutes=grace_minutes,
+        leave_type=existing_leave_type,
     )
 
     if status is None:
@@ -142,6 +151,8 @@ async def generate_daily_summary(
         first_clock_in=first_clock_in,
         last_clock_out=last_clock_out,
         status=status,
+        leave_type=existing_leave_type,
+        remark=existing_remark,
     )
 
     return summary
@@ -183,13 +194,13 @@ async def generate_all_summaries(
     )
 
     summaries: list[DailyAttendanceSummary] = []
-    punched_emp_ids: set[str] = set()
+    handled_emp_ids: set[str] = set()  # punched OR on leave
 
     for emp in employees:
         summary = await generate_daily_summary(session, emp.emp_id, date)
         if summary is not None:
             summaries.append(summary)
-            punched_emp_ids.add(emp.emp_id)
+            handled_emp_ids.add(emp.emp_id)
 
     # Determine workday status via cached Taiwan calendar (fallback Mon-Fri)
     calendar_data = await _load_calendar_for_year(session, date.year)
@@ -198,7 +209,7 @@ async def generate_all_summaries(
 
     # Generate ABSENT summaries for employees who did not punch
     for emp in employees:
-        if emp.emp_id in punched_emp_ids:
+        if emp.emp_id in handled_emp_ids:
             continue
         # Skip ABSENT generation for employees already terminated on this date
         if emp.terminated_at is not None and emp.terminated_at.date() <= date:

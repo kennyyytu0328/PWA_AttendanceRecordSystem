@@ -609,3 +609,31 @@ async def test_override_replaces_absent(db_session: AsyncSession) -> None:
     assert updated.status == AttendanceStatus.NORMAL
     assert updated.first_clock_in == datetime.datetime(2026, 3, 19, 8, 55)
     assert updated.last_clock_out == datetime.datetime(2026, 3, 19, 18, 5)
+
+
+async def test_generate_daily_summary_preserves_existing_leave_type(
+    db_session: AsyncSession,
+) -> None:
+    """Re-generating a summary preserves pre-set leave_type/remark."""
+    from app.repositories import summary_repository
+    from app.services import reporting_service
+
+    # Existing summary with leave_type set (employee pre-filled future day)
+    await _create_employee(db_session, emp_id="E020")
+    await summary_repository.upsert_summary(
+        db_session,
+        emp_id="E020",
+        date=datetime.date(2026, 5, 14),
+        first_clock_in=None,
+        last_clock_out=None,
+        status=AttendanceStatus.LEAVE,
+        leave_type="特休",
+        remark="上午",
+    )
+    summary = await reporting_service.generate_daily_summary(
+        db_session, "E020", datetime.date(2026, 5, 14)
+    )
+    assert summary is not None
+    assert summary.status == AttendanceStatus.LEAVE
+    assert summary.leave_type == "特休"
+    assert summary.remark == "上午"
