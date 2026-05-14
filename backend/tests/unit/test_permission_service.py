@@ -121,3 +121,15 @@ class TestRoleHierarchy:
             assert has_permission(Role.ADMIN, action) is True, (
                 f"ADMIN should have permission: {action}"
             )
+
+
+def test_hr_cannot_delete_employee():
+    assert has_permission(Role.HR, "delete_employee") is False
+
+
+def test_admin_can_delete_employee():
+    assert has_permission(Role.ADMIN, "delete_employee") is True
+
+
+def test_manager_cannot_delete_employee():
+    assert has_permission(Role.MANAGER, "delete_employee") is False

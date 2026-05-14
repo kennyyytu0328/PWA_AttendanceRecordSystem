@@ -20,6 +20,7 @@ CHANGE_OFFICE_LOCATION: str = "change_office_location"
 MANAGE_CONFIG: str = "manage_config"
 EXPORT_REPORTS: str = "export_reports"
 APPROVE_OVERRIDE: str = "approve_override"
+DELETE_EMPLOYEE: str = "delete_employee"
 
 # ---------------------------------------------------------------------------
 # Permission sets — built progressively so higher roles inherit lower ones
@@ -44,6 +45,7 @@ _HR_PERMISSIONS: frozenset[str] = _MANAGER_PERMISSIONS | frozenset({
 _ADMIN_PERMISSIONS: frozenset[str] = _HR_PERMISSIONS | frozenset({
     MANAGE_ROLES,
     MANAGE_CONFIG,
+    DELETE_EMPLOYEE,
 })
 
 PERMISSION_MATRIX: dict[Role, frozenset[str]] = {
