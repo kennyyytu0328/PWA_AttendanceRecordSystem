@@ -97,6 +97,10 @@ async def get_current_user(
             # Normalise to UTC-aware if the DB returns a naive datetime
             if changed_at.tzinfo is None:
                 changed_at = changed_at.replace(tzinfo=datetime.UTC)
+            # JWT iat is whole seconds (NumericDate); drop microseconds on the
+            # DB side so a token issued within the same second as the password
+            # change is not falsely revoked.
+            changed_at = changed_at.replace(microsecond=0)
             if iat_dt < changed_at:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
