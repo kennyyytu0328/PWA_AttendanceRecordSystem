@@ -678,3 +678,105 @@ async def test_generate_all_summaries_does_not_create_absent_for_employee_on_lea
     # E091 gets ABSENT (control case)
     assert len(e091) == 1
     assert e091[0].status == AttendanceStatus.ABSENT
+
+
+# ---------------------------------------------------------------------------
+# Task 11: get_daily_report submission_filter
+# ---------------------------------------------------------------------------
+
+
+async def test_get_daily_report_submission_filter_submitted_excludes_unsubmitted(
+    db_session: AsyncSession,
+) -> None:
+    """Default submission_filter='submitted' excludes rows for unsubmitted (emp, year, month)."""
+    from app.repositories import monthly_submission_repository, summary_repository
+    from app.services import reporting_service
+
+    await _create_employee(db_session, emp_id="E030")
+    await _create_employee(db_session, emp_id="E031")
+    await summary_repository.upsert_summary(
+        db_session, emp_id="E030", date=datetime.date(2026, 5, 14),
+        first_clock_in=datetime.datetime(2026, 5, 14, 9, 0),
+        last_clock_out=datetime.datetime(2026, 5, 14, 18, 0),
+        status=AttendanceStatus.NORMAL,
+    )
+    await summary_repository.upsert_summary(
+        db_session, emp_id="E031", date=datetime.date(2026, 5, 14),
+        first_clock_in=datetime.datetime(2026, 5, 14, 9, 0),
+        last_clock_out=datetime.datetime(2026, 5, 14, 18, 0),
+        status=AttendanceStatus.NORMAL,
+    )
+    await monthly_submission_repository.upsert(db_session, emp_id="E030", year=2026, month=5)
+
+    rows = await reporting_service.get_daily_report(
+        db_session,
+        start_date=datetime.date(2026, 5, 14),
+        submission_filter="submitted",
+    )
+    ids = [r.emp_id for r in rows]
+    assert "E030" in ids
+    assert "E031" not in ids
+
+
+async def test_get_daily_report_submission_filter_all_includes_both(
+    db_session: AsyncSession,
+) -> None:
+    from app.repositories import monthly_submission_repository, summary_repository
+    from app.services import reporting_service
+
+    await _create_employee(db_session, emp_id="E032")
+    await _create_employee(db_session, emp_id="E033")
+    await summary_repository.upsert_summary(
+        db_session, emp_id="E032", date=datetime.date(2026, 5, 14),
+        first_clock_in=datetime.datetime(2026, 5, 14, 9, 0),
+        last_clock_out=datetime.datetime(2026, 5, 14, 18, 0),
+        status=AttendanceStatus.NORMAL,
+    )
+    await summary_repository.upsert_summary(
+        db_session, emp_id="E033", date=datetime.date(2026, 5, 14),
+        first_clock_in=datetime.datetime(2026, 5, 14, 9, 0),
+        last_clock_out=datetime.datetime(2026, 5, 14, 18, 0),
+        status=AttendanceStatus.NORMAL,
+    )
+    await monthly_submission_repository.upsert(db_session, emp_id="E032", year=2026, month=5)
+
+    rows = await reporting_service.get_daily_report(
+        db_session,
+        start_date=datetime.date(2026, 5, 14),
+        submission_filter="all",
+    )
+    ids = [r.emp_id for r in rows]
+    assert "E032" in ids
+    assert "E033" in ids
+
+
+async def test_get_daily_report_submission_filter_unsubmitted_only(
+    db_session: AsyncSession,
+) -> None:
+    from app.repositories import monthly_submission_repository, summary_repository
+    from app.services import reporting_service
+
+    await _create_employee(db_session, emp_id="E034")
+    await _create_employee(db_session, emp_id="E035")
+    await summary_repository.upsert_summary(
+        db_session, emp_id="E034", date=datetime.date(2026, 5, 14),
+        first_clock_in=datetime.datetime(2026, 5, 14, 9, 0),
+        last_clock_out=datetime.datetime(2026, 5, 14, 18, 0),
+        status=AttendanceStatus.NORMAL,
+    )
+    await summary_repository.upsert_summary(
+        db_session, emp_id="E035", date=datetime.date(2026, 5, 14),
+        first_clock_in=datetime.datetime(2026, 5, 14, 9, 0),
+        last_clock_out=datetime.datetime(2026, 5, 14, 18, 0),
+        status=AttendanceStatus.NORMAL,
+    )
+    await monthly_submission_repository.upsert(db_session, emp_id="E034", year=2026, month=5)
+
+    rows = await reporting_service.get_daily_report(
+        db_session,
+        start_date=datetime.date(2026, 5, 14),
+        submission_filter="unsubmitted",
+    )
+    ids = [r.emp_id for r in rows]
+    assert "E035" in ids
+    assert "E034" not in ids

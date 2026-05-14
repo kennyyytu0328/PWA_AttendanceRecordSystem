@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.daily_attendance_summary import AttendanceStatus, DailyAttendanceSummary
 from app.repositories import attendance_repository, employee_repository, summary_repository
-from app.repositories import system_config_repository
+from app.repositories import monthly_submission_repository, system_config_repository
 from app.utils.taiwan_calendar import (
     DayInfo,
     is_workday_from_data,
@@ -235,6 +235,7 @@ async def get_daily_report(
     emp_id: str | None = None,
     status_filter: str | None = None,
     include_terminated: bool = False,
+    submission_filter: str = "submitted",
 ) -> list[DailyAttendanceSummary]:
     """Return daily attendance summaries for a date range (inclusive).
 
@@ -289,6 +290,26 @@ async def get_daily_report(
         except ValueError:
             return []
         all_summaries = [s for s in all_summaries if s.status == target_status]
+
+    if submission_filter != "all":
+        cache: dict[tuple[int, int], set[str]] = {}
+
+        async def _is_submitted(emp: str, d: datetime.date) -> bool:
+            key = (d.year, d.month)
+            if key not in cache:
+                cache[key] = await monthly_submission_repository.submitted_emp_ids(
+                    session, year=d.year, month=d.month
+                )
+            return emp in cache[key]
+
+        filtered: list[DailyAttendanceSummary] = []
+        for s in all_summaries:
+            submitted = await _is_submitted(s.emp_id, s.date)
+            if submission_filter == "submitted" and submitted:
+                filtered.append(s)
+            elif submission_filter == "unsubmitted" and not submitted:
+                filtered.append(s)
+        all_summaries = filtered
 
     all_summaries.sort(key=lambda s: (s.date, s.emp_id))
     return all_summaries
