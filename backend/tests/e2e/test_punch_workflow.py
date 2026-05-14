@@ -264,6 +264,18 @@ class TestFullReportingFlow:
         db_session.add(log_out)
         await db_session.commit()
 
+        # Seed monthly submission for EMP001 so the default
+        # submission_filter="submitted" on /api/reports/daily and /export
+        # doesn't hide the summary under test.
+        from app.repositories import monthly_submission_repository
+
+        await monthly_submission_repository.upsert(
+            db_session,
+            emp_id="EMP001",
+            year=today.year,
+            month=today.month,
+        )
+
         # Step 3: ADMIN generates daily summaries
         gen_resp = await client.post(
             "/api/reports/generate",

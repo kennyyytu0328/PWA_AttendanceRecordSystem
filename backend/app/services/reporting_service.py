@@ -13,6 +13,7 @@ import datetime
 import io
 import json
 from datetime import timedelta
+from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -235,7 +236,7 @@ async def get_daily_report(
     emp_id: str | None = None,
     status_filter: str | None = None,
     include_terminated: bool = False,
-    submission_filter: str = "submitted",
+    submission_filter: Literal["submitted", "unsubmitted", "all"] = "submitted",
 ) -> list[DailyAttendanceSummary]:
     """Return daily attendance summaries for a date range (inclusive).
 
@@ -250,9 +251,22 @@ async def get_daily_report(
     department:
         Optional department filter.
     emp_id:
-        Optional individual employee filter.
+        Optional individual employee filter. When provided, terminated
+        employees are always included (LSA §30(5) retention).
     status_filter:
         Optional status filter (e.g. ``"LATE"``).
+    include_terminated:
+        When ``False`` (default) and no explicit ``emp_id`` is provided,
+        terminated employees are excluded from the result. Ignored when
+        ``emp_id`` is set.
+    submission_filter:
+        Controls visibility based on the per-month submission state in
+        ``monthly_submissions``. One of:
+
+        * ``"submitted"`` (default) — only summaries whose
+          (emp_id, year, month) has a submission row.
+        * ``"unsubmitted"`` — only summaries with no submission row.
+        * ``"all"`` — no submission-state filtering.
 
     Returns
     -------

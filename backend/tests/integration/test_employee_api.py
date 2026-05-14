@@ -427,6 +427,17 @@ class TestTerminateEmployee:
         )
         await db_session.commit()
 
+        # Seed monthly submission so the default submission_filter="submitted"
+        # in /api/reports/daily doesn't hide QUIT01's summary.
+        from app.repositories import monthly_submission_repository
+
+        await monthly_submission_repository.upsert(
+            db_session,
+            emp_id="QUIT01",
+            year=today.year,
+            month=today.month,
+        )
+
         token = _make_token("HR001", Role.HR)
 
         # Terminate QUIT01 after the punch
