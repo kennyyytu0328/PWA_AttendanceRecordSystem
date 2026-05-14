@@ -5,6 +5,7 @@ from app.models.attendance_reason import AttendanceReason
 from app.models.authenticator import Authenticator
 from app.models.daily_attendance_summary import AttendanceStatus, DailyAttendanceSummary
 from app.models.employee import Employee, Role
+from app.models.monthly_submission import MonthlySubmission
 from app.models.system_config import SystemConfig
 
 __all__ = [
@@ -14,6 +15,7 @@ __all__ = [
     "Authenticator",
     "DailyAttendanceSummary",
     "Employee",
+    "MonthlySubmission",
     "Role",
     "SystemConfig",
     "WorkMode",
