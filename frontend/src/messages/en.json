@@ -13,7 +13,7 @@
     "title": "GoGoFresh Attendance",
     "subtitle": "Sign in to your account",
     "empId": "Employee ID",
-    "empIdPlaceholder": "e.g. EMP001",
+    "empIdPlaceholder": "Enter your Employee ID",
     "password": "Password",
     "passwordPlaceholder": "Enter your password",
     "signingIn": "Signing in...",
@@ -188,7 +188,10 @@
     "terminatedBadge": "Resigned",
     "terminatedOn": "Resigned on {date}",
     "showTerminated": "Show resigned employees",
-    "hideTerminated": "Hide resigned employees"
+    "hideTerminated": "Hide resigned employees",
+    "leaveTypes": "Leave Types",
+    "leaveTypesAdd": "Add Leave Type",
+    "leaveTypesRemove": "Remove"
   },
   "team": {
     "title": "Team Attendance",
@@ -253,7 +256,15 @@
     "statusAbsent": "ABSENT",
     "showTerminated": "Include resigned employees",
     "hideTerminated": "Hide resigned employees",
-    "terminatedOption": "(Resigned)"
+    "terminatedOption": "(Resigned)",
+    "shiftTime": "Shift",
+    "remark": "Remark",
+    "submissionStatus": "Submission Status",
+    "submitted": "Submitted ✓",
+    "unsubmitted": "Unsubmitted",
+    "filterSubmitted": "Submitted",
+    "filterUnsubmitted": "Unsubmitted",
+    "filterAll": "All"
   },
   "monthlyOverride": {
     "title": "Monthly Punch Override",
@@ -280,7 +291,15 @@
     "selectEmployee": "Select Employee",
     "previousMonth": "Previous Month",
     "nextMonth": "Next Month",
-    "scrollHint": "Tip: swipe sideways to see all columns"
+    "scrollHint": "Tip: swipe sideways to see all columns",
+    "remark": "Remark",
+    "leaveType": "Leave Type",
+    "leaveTypeNone": "— None —",
+    "submitMonth": "Submit Month",
+    "warningTitle": "{count} abnormal day(s) detected",
+    "warningBody": "The following dates have abnormal status. Proceed anyway?",
+    "backToEdit": "Back to Edit",
+    "proceed": "Proceed"
   },
   "calendarStatus": {
     "title": "Workday Calendar Status",
@@ -329,5 +348,8 @@
   },
   "api": {
     "requestFailed": "Request failed"
+  },
+  "status": {
+    "leave": "Leave"
   }
 }

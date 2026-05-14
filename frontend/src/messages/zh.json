@@ -13,7 +13,7 @@
     "title": "GoGoFresh 考勤系統",
     "subtitle": "登入您的帳戶",
     "empId": "員工編號",
-    "empIdPlaceholder": "例如 EMP001",
+    "empIdPlaceholder": "請輸入員工編號",
     "password": "密碼",
     "passwordPlaceholder": "請輸入密碼",
     "signingIn": "登入中...",
@@ -188,7 +188,10 @@
     "terminatedBadge": "已離職",
     "terminatedOn": "{date} 離職",
     "showTerminated": "顯示已離職員工",
-    "hideTerminated": "隱藏已離職員工"
+    "hideTerminated": "隱藏已離職員工",
+    "leaveTypes": "假別管理",
+    "leaveTypesAdd": "新增假別",
+    "leaveTypesRemove": "移除"
   },
   "team": {
     "title": "團隊考勤",
@@ -253,7 +256,15 @@
     "statusAbsent": "缺勤",
     "showTerminated": "包含已離職員工",
     "hideTerminated": "隱藏已離職員工",
-    "terminatedOption": "（已離職）"
+    "terminatedOption": "（已離職）",
+    "shiftTime": "班別時間",
+    "remark": "備註",
+    "submissionStatus": "送單狀態",
+    "submitted": "已送單 ✓",
+    "unsubmitted": "未送單",
+    "filterSubmitted": "已送單",
+    "filterUnsubmitted": "未送單",
+    "filterAll": "全部"
   },
   "monthlyOverride": {
     "title": "月度打卡修改",
@@ -280,7 +291,15 @@
     "selectEmployee": "選擇員工",
     "previousMonth": "上個月",
     "nextMonth": "下個月",
-    "scrollHint": "提示：左右滑動可查看所有欄位"
+    "scrollHint": "提示：左右滑動可查看所有欄位",
+    "remark": "備註",
+    "leaveType": "假別",
+    "leaveTypeNone": "— 無 —",
+    "submitMonth": "本月送單",
+    "warningTitle": "偵測到 {count} 個異常日",
+    "warningBody": "下列日期狀態異常，仍要繼續送出嗎？",
+    "backToEdit": "返回修改",
+    "proceed": "繼續送出"
   },
   "calendarStatus": {
     "title": "工作日行事曆狀態",
@@ -329,5 +348,8 @@
   },
   "api": {
     "requestFailed": "請求失敗"
+  },
+  "status": {
+    "leave": "請假"
   }
 }
