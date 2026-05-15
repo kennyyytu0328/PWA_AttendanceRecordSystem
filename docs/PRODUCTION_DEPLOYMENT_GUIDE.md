@@ -51,9 +51,46 @@ GoGoFresh Attendance — step-by-step guide for deploying to a production enviro
 ## 1. Clone the repo onto the server
 
 ```bash
-git clone <your-repo-url> /opt/gogofresh-attendance
+sudo git clone <your-repo-url> /opt/gogofresh-attendance
+sudo chown -R $USER:$USER /opt/gogofresh-attendance   # so later `git pull` / edits don't need sudo
 cd /opt/gogofresh-attendance
+ls   # expect: backend/  docs/  docker-compose.prod.yml  frontend/  ...
 ```
+
+### 1.1 Authentication for Bitbucket / GitHub clones
+
+Both Bitbucket and GitHub stopped accepting account passwords for git over HTTPS. Use one of the following:
+
+**Bitbucket — API token** (the replacement for App Passwords, which Atlassian deprecated on 2025-09-09):
+- Generate the token in Atlassian account settings → Security → **API tokens** → scope it to `Bitbucket: repositories: read` for the target repo
+- At the `git clone` prompt:
+  - **Username**: your Atlassian account email (e.g. `kennyyytu0328@gmail.com`)
+  - **Password**: paste the API token
+
+**GitHub — Personal Access Token (fine-grained)**:
+- GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → grant `Contents: Read-only` on the target repo
+- At the `git clone` prompt:
+  - **Username**: your GitHub username
+  - **Password**: paste the PAT
+
+**Either platform — SSH deploy key** (cleanest long-term, no expiry, no token rotation):
+- `ssh-keygen -t ed25519 -C "<server-name> deploy" -f ~/.ssh/<remote>_deploy` (no passphrase for unattended pulls)
+- Paste `~/.ssh/<remote>_deploy.pub` into the repo's **Access keys** settings (Bitbucket) or **Deploy keys** (GitHub), read-only
+- Add to `~/.ssh/config`:
+  ```
+  Host bitbucket.org    # or github.com
+      User git
+      IdentityFile ~/.ssh/<remote>_deploy
+      IdentitiesOnly yes
+  ```
+- Clone via SSH URL: `git clone git@bitbucket.org:<workspace>/<repo>.git ...`
+
+**Optional**: to avoid re-pasting the HTTPS token on every `git pull`:
+```bash
+git config --global credential.helper store
+git pull   # paste token once; stored cleartext in ~/.git-credentials thereafter
+```
+Only use `store` on a server you alone have shell access to.
 
 ---
 

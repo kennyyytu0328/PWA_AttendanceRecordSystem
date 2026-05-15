@@ -50,9 +50,46 @@ GoGoFresh 差勤系統 — 部署至正式環境的逐步指南。
 ## 1. 將 repo clone 至伺服器
 
 ```bash
-git clone <your-repo-url> /opt/gogofresh-attendance
+sudo git clone <your-repo-url> /opt/gogofresh-attendance
+sudo chown -R $USER:$USER /opt/gogofresh-attendance   # 後續 git pull / 編輯不需 sudo
 cd /opt/gogofresh-attendance
+ls   # 應看到：backend/  docs/  docker-compose.prod.yml  frontend/  ...
 ```
+
+### 1.1 Bitbucket / GitHub clone 驗證方式
+
+Bitbucket 與 GitHub 皆已停止支援 git over HTTPS 的帳號密碼登入。請擇一使用：
+
+**Bitbucket — API token**（Atlassian 已於 2025-09-09 棄用 App Passwords，改用 API token）：
+- 於 Atlassian 帳號設定 → Security → **API tokens** 產生 token，scope 設為 `Bitbucket: repositories: read`
+- `git clone` 提示時：
+  - **Username**：Atlassian 帳號的 email（例如 `kennyyytu0328@gmail.com`）
+  - **Password**：貼上 API token
+
+**GitHub — Personal Access Token (fine-grained)**：
+- GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained tokens**，授予該 repo `Contents: Read-only`
+- `git clone` 提示時：
+  - **Username**：GitHub 使用者名稱
+  - **Password**：貼上 PAT
+
+**兩種平台皆適用 — SSH deploy key**（長期最乾淨，無到期、無 token 輪替）：
+- `ssh-keygen -t ed25519 -C "<server-name> deploy" -f ~/.ssh/<remote>_deploy`（不設密碼，方便無人值守 pull）
+- 將 `~/.ssh/<remote>_deploy.pub` 貼到該 repo 的 **Access keys**（Bitbucket）或 **Deploy keys**（GitHub），唯讀
+- 加入 `~/.ssh/config`：
+  ```
+  Host bitbucket.org    # 或 github.com
+      User git
+      IdentityFile ~/.ssh/<remote>_deploy
+      IdentitiesOnly yes
+  ```
+- 改用 SSH URL clone：`git clone git@bitbucket.org:<workspace>/<repo>.git ...`
+
+**可選**：若希望日後 `git pull` 不再重複貼 token：
+```bash
+git config --global credential.helper store
+git pull   # 貼一次，之後存於 ~/.git-credentials（明文）
+```
+僅在僅您能 shell 進入的伺服器上使用 `store`。
 
 ---
 
