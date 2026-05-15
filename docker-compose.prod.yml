@@ -1,11 +1,18 @@
 # =============================================================================
 # GoGoFresh Attendance — Production Docker Compose Template
 # =============================================================================
+# This template assumes you are using an EXISTING PostgreSQL server on the
+# Docker host (e.g., a shared Postgres serving multiple apps on the same VM).
+# The backend container reaches it via `host.docker.internal`.
+#
+# If you would rather run a bundled Postgres container (single-tenant box,
+# fully self-contained), see the commented-out `db:` service at the bottom of
+# this file and the notes in docs/PRODUCTION_DEPLOYMENT_GUIDE.md.
+#
 # Differences from docker-compose.yml (dev):
 #   - No bind mounts (images are self-contained, immutable)
 #   - No --reload on uvicorn; use --workers for concurrency
 #   - No hardcoded secrets; all env values pulled from .env files
-#   - Postgres port NOT published to host (access only through the compose net)
 #   - Backend/frontend behind a reverse proxy (nginx/Caddy) for TLS termination
 #     — TLS is NOT handled in this file; put Caddy/nginx in front.
 # =============================================================================
@@ -17,22 +24,6 @@
 # =============================================================================
 
 services:
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-attendance_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-      POSTGRES_DB: ${POSTGRES_DB:-attendance}
-    # No `ports:` — DB is internal to the compose network only.
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-attendance_user}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   backend:
     build:
       context: ./backend
@@ -40,15 +31,11 @@ services:
     restart: unless-stopped
     env_file:
       - ./backend/.env
-    # Override the DB host so backend reaches postgres via the compose network,
-    # not whatever was in DATABASE_URL in .env (which may be a managed host).
-    # If you ARE using a managed DB, remove the `db` service above and this
-    # environment block; the .env DATABASE_URL will be used as-is.
-    environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-attendance_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-attendance}
-    depends_on:
-      db:
-        condition: service_healthy
+    # Map host.docker.internal to the host's gateway IP so the backend can
+    # reach a Postgres running on the host (outside Docker). DATABASE_URL in
+    # backend/.env should use `host.docker.internal:5432` as the host:port.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     # Production: no --reload, use multiple workers for concurrency.
     # Tune --workers to ~ (2 * CPU cores) + 1.
     # --proxy-headers + --forwarded-allow-ips=* lets FastAPI trust
@@ -56,9 +43,12 @@ services:
     # (www.gogoffcc.com). Without this, requests look like plain HTTP and
     # WebAuthn origin checks fail.
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --proxy-headers --forwarded-allow-ips=*
-    # Expose only to the reverse proxy, not to the public internet.
-    expose:
-      - "8000"
+    # Published on the loopback interface only — the host nginx (which holds
+    # the public /gogoffcc-arms/ location blocks) proxies to 127.0.0.1:8120.
+    # Host port 8120 is chosen to avoid a collision with another app already
+    # using 8000 on the production VM. Container port stays 8000 (uvicorn).
+    ports:
+      - "127.0.0.1:8120:8000"
 
   frontend:
     build:
@@ -75,9 +65,34 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
-    expose:
-      - "3000"
+    # Published on the loopback interface only — host nginx proxies to
+    # 127.0.0.1:3000 for /gogoffcc-arms/ (preserving the basePath prefix).
+    ports:
+      - "127.0.0.1:3000:3000"
 
-volumes:
-  pgdata:
-    driver: local
+# -----------------------------------------------------------------------------
+# Optional: bundled Postgres (uncomment to run a Postgres container instead
+# of using a host Postgres). If you uncomment this, also:
+#   - Add `depends_on: db: { condition: service_healthy }` under `backend:`
+#   - Remove the `extra_hosts:` block under `backend:` (not needed)
+#   - In backend/.env, set DATABASE_URL host to `db` (the service name)
+#   - Add a `volumes:` section at the bottom of this file with `pgdata:`
+# -----------------------------------------------------------------------------
+#   db:
+#     image: postgres:16-alpine
+#     restart: unless-stopped
+#     environment:
+#       POSTGRES_USER: ${POSTGRES_USER:-attendance_user}
+#       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+#       POSTGRES_DB: ${POSTGRES_DB:-attendance}
+#     volumes:
+#       - pgdata:/var/lib/postgresql/data
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-attendance_user}"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+#
+# volumes:
+#   pgdata:
+#     driver: local
