@@ -1,11 +1,14 @@
 """Summary repository — async data-access functions for DailyAttendanceSummary."""
 
 import datetime
+import decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.daily_attendance_summary import AttendanceStatus, DailyAttendanceSummary
+
+_UNSET: object = object()
 
 
 async def create_summary(
@@ -27,8 +30,14 @@ async def upsert_summary(
     status: AttendanceStatus,
     leave_type: str | None = None,
     remark: str | None = None,
+    overtime_hours: decimal.Decimal | None | object = _UNSET,
 ) -> DailyAttendanceSummary:
-    """Insert or update a daily attendance summary by (emp_id, date)."""
+    """Insert or update a daily attendance summary by (emp_id, date).
+
+    `overtime_hours` uses a sentinel default so existing callers that don't
+    care (punch / summary recompute paths) leave the persisted value alone,
+    while bulk-override can explicitly pass None to clear it.
+    """
     statement = select(DailyAttendanceSummary).where(
         DailyAttendanceSummary.emp_id == emp_id,
         DailyAttendanceSummary.date == date,
@@ -42,6 +51,8 @@ async def upsert_summary(
         existing.status = status
         existing.leave_type = leave_type
         existing.remark = remark
+        if overtime_hours is not _UNSET:
+            existing.overtime_hours = overtime_hours  # type: ignore[assignment]
         session.add(existing)
         await session.commit()
         await session.refresh(existing)
@@ -55,6 +66,7 @@ async def upsert_summary(
         status=status,
         leave_type=leave_type,
         remark=remark,
+        overtime_hours=None if overtime_hours is _UNSET else overtime_hours,  # type: ignore[arg-type]
     )
     session.add(summary)
     await session.commit()

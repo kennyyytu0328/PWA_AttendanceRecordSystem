@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import datetime
+import decimal
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class BulkOverrideEntry(BaseModel):
@@ -16,6 +17,22 @@ class BulkOverrideEntry(BaseModel):
     last_clock_out: Optional[datetime.time] = None
     leave_type: Optional[str] = Field(default=None, max_length=50)
     remark: Optional[str] = Field(default=None, max_length=500)
+    overtime_hours: Optional[decimal.Decimal] = Field(default=None)
+
+    @field_validator("overtime_hours")
+    @classmethod
+    def _validate_overtime_step(
+        cls, v: Optional[decimal.Decimal]
+    ) -> Optional[decimal.Decimal]:
+        if v is None:
+            return None
+        if v < decimal.Decimal("1.0"):
+            raise ValueError("overtime_hours must be >= 1.0")
+        # First hour must be whole; after that 0.5 increments — equivalent to
+        # saying the value is a multiple of 0.5.
+        if (v * 2) != (v * 2).to_integral_value():
+            raise ValueError("overtime_hours must be in 0.5 increments")
+        return v
 
 
 class BulkOverrideRequest(BaseModel):

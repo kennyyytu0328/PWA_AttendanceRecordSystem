@@ -32,7 +32,9 @@ vi.mock("@/lib/auth-context", () => ({
 vi.mock("@/lib/api", () => ({
   apiClient: {
     post: vi.fn(),
-    get: vi.fn(),
+    // Default to an empty workdays response so the on-mount day_kind probe
+    // doesn't reject; individual tests can override via vi.mocked(...).
+    get: vi.fn().mockResolvedValue({ year: 2026, month: 1, days: [] }),
   },
   ApiError: class ApiError extends Error {
     status: number;

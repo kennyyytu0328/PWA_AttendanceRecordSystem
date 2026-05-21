@@ -159,6 +159,9 @@ async def get_my_summaries(
             "status": s.status.value,
             "leave_type": s.leave_type,
             "remark": s.remark,
+            "overtime_hours": (
+                float(s.overtime_hours) if s.overtime_hours is not None else None
+            ),
         }
         for s in summaries
     ]
@@ -220,6 +223,7 @@ async def bulk_override(
                     "last_clock_out": entry.last_clock_out,
                     "leave_type": entry.leave_type,
                     "remark": entry.remark,
+                    "overtime_hours": entry.overtime_hours,
                 }
                 for entry in body.entries
             ],

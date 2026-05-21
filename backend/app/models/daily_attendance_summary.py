@@ -1,6 +1,7 @@
 """DailyAttendanceSummary model with AttendanceStatus enum."""
 
 import datetime
+import decimal
 import enum
 from typing import Optional
 
@@ -38,3 +39,7 @@ class DailyAttendanceSummary(SQLModel, table=True):
     )
     leave_type: Optional[str] = Field(default=None, max_length=50)
     remark: Optional[str] = Field(default=None, max_length=500)
+    overtime_hours: Optional[decimal.Decimal] = Field(
+        default=None,
+        sa_column=sa.Column(sa.Numeric(3, 1), nullable=True),
+    )

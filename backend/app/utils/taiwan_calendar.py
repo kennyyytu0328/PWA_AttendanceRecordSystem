@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import calendar
 import datetime
+import enum
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,6 +16,40 @@ import httpx
 
 _MAKEUP_KEYWORDS = ("補行上班", "補班")
 _WEEKDAY_ZH = ["一", "二", "三", "四", "五", "六", "日"]
+
+
+class DayKind(str, enum.Enum):
+    """Editability / labor-law classification for a calendar day."""
+
+    WORKDAY = "WORKDAY"
+    MAKEUP_WORKDAY = "MAKEUP_WORKDAY"
+    NATIONAL_HOLIDAY = "NATIONAL_HOLIDAY"
+    REST_DAY = "REST_DAY"          # 休息日 — Saturday (non-makeup)
+    REGULAR_LEAVE = "REGULAR_LEAVE"  # 例假日 — Sunday
+
+
+def classify_day_kind(day: "DayInfo") -> DayKind:
+    """Classify a DayInfo into a DayKind for editability + display.
+
+    Rules (in order):
+    - Sunday is always REGULAR_LEAVE — labor-law-mandated weekly rest; takes
+      priority even if a national holiday also falls on this Sunday, because
+      the editing lock is what matters to callers.
+    - A makeup workday (補班) is treated as a normal workday, even on Saturday.
+    - Saturday with is_holiday=True (and not makeup) is REST_DAY (休息日).
+    - Any other is_holiday day (weekday) is NATIONAL_HOLIDAY.
+    - Otherwise WORKDAY.
+    """
+    weekday = day.date.weekday()  # Mon=0 ... Sun=6
+    if weekday == 6:
+        return DayKind.REGULAR_LEAVE
+    if day.is_makeup_workday:
+        return DayKind.MAKEUP_WORKDAY
+    if weekday == 5 and day.is_holiday:
+        return DayKind.REST_DAY
+    if day.is_holiday:
+        return DayKind.NATIONAL_HOLIDAY
+    return DayKind.WORKDAY
 
 CALENDAR_CDN_URL = "https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/{year}.json"
 
@@ -50,6 +85,24 @@ def parse_calendar_json(raw_entries: list[dict[str, Any]]) -> list[DayInfo]:
             )
         )
     return result
+
+
+def classify_date_kind(data: list[DayInfo], target: datetime.date) -> DayKind:
+    """Classify a date using parsed calendar data, with weekday fallback.
+
+    If `target` is missing from the data, fall back to: Sunday → REGULAR_LEAVE,
+    Saturday → REST_DAY, weekday → WORKDAY. This keeps the labor-law lock
+    correct even when calendar fetch failed.
+    """
+    for day in data:
+        if day.date == target:
+            return classify_day_kind(day)
+    weekday = target.weekday()
+    if weekday == 6:
+        return DayKind.REGULAR_LEAVE
+    if weekday == 5:
+        return DayKind.REST_DAY
+    return DayKind.WORKDAY
 
 
 def is_workday_from_data(data: list[DayInfo], target: datetime.date) -> bool:

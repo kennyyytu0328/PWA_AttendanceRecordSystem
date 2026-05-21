@@ -20,6 +20,7 @@ import type {
   BulkOverrideEntry,
   BulkOverrideResponse,
   DailyAttendanceSummary,
+  DayKind,
   Employee,
   Role,
   WorkdayInfo,
@@ -62,12 +63,29 @@ interface DayRow {
   readonly is_holiday: boolean;
   readonly description: string;
   readonly is_makeup_workday: boolean;
+  readonly day_kind: DayKind;
   readonly clockIn: string;
   readonly clockOut: string;
   readonly status: string;
   readonly isEditable: boolean;
   readonly leaveType: string | null;
   readonly remark: string | null;
+  readonly overtimeHours: number | null;
+}
+
+const OVERTIME_OPTIONS: readonly number[] = [
+  1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8,
+];
+
+function deriveDayKind(d: WorkdayInfo): DayKind {
+  if (d.day_kind) return d.day_kind;
+  // Fallback for older backends — replicates classify_day_kind() exactly.
+  const wd = new Date(d.date).getDay(); // 0 = Sunday, 6 = Saturday
+  if (wd === 0) return "REGULAR_LEAVE";
+  if (d.is_makeup_workday) return "MAKEUP_WORKDAY";
+  if (wd === 6 && d.is_holiday) return "REST_DAY";
+  if (d.is_holiday) return "NATIONAL_HOLIDAY";
+  return "WORKDAY";
 }
 
 const ABNORMAL_STATUSES: ReadonlySet<string> = new Set([
@@ -124,25 +142,39 @@ function DayTypeBadge({
   readonly day: DayRow;
   readonly t: (key: string) => string;
 }) {
-  if (day.is_makeup_workday) {
-    return (
-      <span className="inline-block rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
-        {t("monthlyOverride.makeupWorkday")}
-      </span>
-    );
+  switch (day.day_kind) {
+    case "MAKEUP_WORKDAY":
+      return (
+        <span className="inline-block rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+          {t("monthlyOverride.makeupWorkday")}
+        </span>
+      );
+    case "REGULAR_LEAVE":
+      return (
+        <span className="inline-block rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-700">
+          {t("monthlyOverride.regularLeave")}
+        </span>
+      );
+    case "REST_DAY":
+      return (
+        <span className="inline-block rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-700">
+          {t("monthlyOverride.restDay")}
+        </span>
+      );
+    case "NATIONAL_HOLIDAY":
+      return (
+        <span className="inline-block rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-600">
+          {day.description || t("monthlyOverride.nationalHoliday")}
+        </span>
+      );
+    case "WORKDAY":
+    default:
+      return (
+        <span className="inline-block rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
+          {t("monthlyOverride.workday")}
+        </span>
+      );
   }
-  if (day.is_holiday) {
-    return (
-      <span className="inline-block rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-600">
-        {day.description || t("monthlyOverride.holiday")}
-      </span>
-    );
-  }
-  return (
-    <span className="inline-block rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
-      {t("monthlyOverride.workday")}
-    </span>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -269,19 +301,37 @@ export default function MonthlyOverridePage() {
 
       const builtRows: DayRow[] = workdays.days.map((day: WorkdayInfo) => {
         const summary = summaryMap[day.date];
-        const isEditable = !day.is_holiday || day.is_makeup_workday;
+        const dayKind = deriveDayKind(day);
+        // Editability matrix:
+        //   REGULAR_LEAVE (Sun) → nobody can edit
+        //   REST_DAY (Sat)      → only HR+ can edit
+        //   NATIONAL_HOLIDAY    → nobody can edit (unchanged from old behavior)
+        //   WORKDAY / MAKEUP_WORKDAY → editable for everyone
+        let isEditable: boolean;
+        if (dayKind === "REGULAR_LEAVE") {
+          isEditable = false;
+        } else if (dayKind === "REST_DAY") {
+          isEditable = isHrPlus;
+        } else if (dayKind === "NATIONAL_HOLIDAY") {
+          isEditable = false;
+        } else {
+          isEditable = true;
+        }
         return {
           date: day.date,
           weekday_zh: day.weekday_zh,
           is_holiday: day.is_holiday,
           description: day.description,
           is_makeup_workday: day.is_makeup_workday,
+          day_kind: dayKind,
           clockIn: summary ? extractTime(summary.first_clock_in) : "",
           clockOut: summary ? extractTime(summary.last_clock_out) : "",
           status: summary?.status ?? "",
           isEditable,
           leaveType: summary?.leave_type ?? null,
           remark: summary?.remark ?? null,
+          overtimeHours:
+            summary?.overtime_hours != null ? Number(summary.overtime_hours) : null,
         };
       });
 
@@ -404,6 +454,18 @@ export default function MonthlyOverridePage() {
     );
   }, []);
 
+  const handleOvertimeChange = useCallback(
+    (date: string, value: string) => {
+      const next = value === "" ? null : Number(value);
+      setRows((prev) =>
+        prev.map((row) =>
+          row.date === date ? { ...row, overtimeHours: next } : row,
+        ),
+      );
+    },
+    [],
+  );
+
   // Save overrides
   const handleSave = useCallback(async () => {
     const changedEntries: BulkOverrideEntry[] = rows
@@ -414,7 +476,8 @@ export default function MonthlyOverridePage() {
           (row.clockIn !== orig.clockIn ||
             row.clockOut !== orig.clockOut ||
             row.leaveType !== orig.leaveType ||
-            row.remark !== orig.remark)
+            row.remark !== orig.remark ||
+            row.overtimeHours !== orig.overtimeHours)
         );
       })
       .map((row) => ({
@@ -423,6 +486,7 @@ export default function MonthlyOverridePage() {
         last_clock_out: row.clockOut || null,
         leave_type: row.leaveType,
         remark: row.remark,
+        overtime_hours: row.overtimeHours,
       }));
 
     if (changedEntries.length === 0) {
@@ -738,6 +802,9 @@ export default function MonthlyOverridePage() {
                     {t("monthlyOverride.remark")}
                   </th>
                   <th className="px-4 py-3 font-medium text-gray-600">
+                    {t("monthlyOverride.overtimeHours")}
+                  </th>
+                  <th className="px-4 py-3 font-medium text-gray-600">
                     {t("monthlyOverride.status")}
                   </th>
                 </tr>
@@ -748,14 +815,21 @@ export default function MonthlyOverridePage() {
                     row.status === "LATE" ||
                     row.status === "EARLY_LEAVE" ||
                     row.status === "LATE_AND_EARLY_LEAVE";
-                  const rowClass =
-                    row.is_holiday && !row.is_makeup_workday
-                      ? "bg-gray-50 text-gray-400"
-                      : isTardy
-                        ? "bg-red-100 hover:bg-red-200 border-l-4 border-l-red-500 font-medium"
-                        : row.is_makeup_workday
-                          ? "bg-amber-50/50"
-                          : "hover:bg-gray-50";
+                  const isRegularLeave = row.day_kind === "REGULAR_LEAVE";
+                  const isRestDay = row.day_kind === "REST_DAY";
+                  const rowClass = isRegularLeave
+                    ? "bg-rose-50 text-rose-400"
+                    : isRestDay
+                      ? row.isEditable
+                        ? "bg-orange-50/60 hover:bg-orange-50"
+                        : "bg-orange-50 text-orange-400"
+                      : row.is_holiday && !row.is_makeup_workday
+                        ? "bg-gray-50 text-gray-400"
+                        : isTardy
+                          ? "bg-red-100 hover:bg-red-200 border-l-4 border-l-red-500 font-medium"
+                          : row.is_makeup_workday
+                            ? "bg-amber-50/50"
+                            : "hover:bg-gray-50";
                   return (
                   <tr
                     key={row.date}
@@ -828,6 +902,27 @@ export default function MonthlyOverridePage() {
                         </td>
                       </>
                     )}
+                    <td className="px-4 py-3">
+                      {row.isEditable ? (
+                        <select
+                          data-testid="overtime-select"
+                          value={row.overtimeHours ?? ""}
+                          onChange={(e) =>
+                            handleOvertimeChange(row.date, e.target.value)
+                          }
+                          className="rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-1 focus:ring-[#4ec6c1] focus:outline-none"
+                        >
+                          <option value="">—</option>
+                          {OVERTIME_OPTIONS.map((h) => (
+                            <option key={h} value={h}>
+                              {h}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={row.status} t={t} />
                     </td>

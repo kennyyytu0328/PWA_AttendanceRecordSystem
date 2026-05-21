@@ -20,6 +20,23 @@ from app.repositories import (
 )
 from app.services import geolocation_service, reporting_service
 from app.services.permission_service import APPROVE_OVERRIDE, has_permission
+from app.utils.taiwan_calendar import (
+    DayKind,
+    classify_date_kind,
+    parse_calendar_json,
+)
+
+
+_HR_PLUS_ROLES = frozenset({Role.HR, Role.ADMIN})
+
+
+async def _classify_calendar_date(
+    session: AsyncSession, target: datetime.date
+) -> DayKind:
+    """Look up DayKind for `target` using the cached Taiwan calendar."""
+    cached = await system_config_repository.get_workday_calendar(session, target.year)
+    data = parse_calendar_json(cached.get("entries", [])) if cached else []
+    return classify_date_kind(data, target)
 
 __all__ = [
     "PunchResult",
@@ -68,6 +85,20 @@ async def punch(
     employee = await employee_repository.find_by_id(session, emp_id)
     if employee is None:
         raise ValueError(f"Employee '{emp_id}' not found")
+
+    # Reject live punches on rest day (Sat) / regular leave (Sun) — labor law
+    # forbids regular Sunday work and Saturday overtime needs HR/ADMIN-supplied
+    # 補登 instead of live punching. Makeup workdays (補班週六) bypass this.
+    today = datetime.datetime.now().date()
+    day_kind = await _classify_calendar_date(session, today)
+    if day_kind == DayKind.REGULAR_LEAVE:
+        raise ValueError(
+            "Sunday is 例假日 — live punching is not permitted (labor law)."
+        )
+    if day_kind == DayKind.REST_DAY:
+        raise ValueError(
+            "Saturday is 休息日 — please contact HR for 補登 instead of live punching."
+        )
 
     geo_result = await geolocation_service.determine_work_mode(
         session, latitude, longitude, accuracy
@@ -296,6 +327,19 @@ async def bulk_override_punches(
     if employee is None:
         raise ValueError(f"Employee {emp_id} not found")
 
+    # Pre-load calendars for every year touched by the request so we can
+    # gate Saturday (休息日 — HR+ only) and Sunday (例假日 — nobody) without
+    # hitting the DB per-entry.
+    years_touched = {e["date"].year for e in entries}
+    calendar_cache: dict[int, list] = {}
+    for y in years_touched:
+        cached = await system_config_repository.get_workday_calendar(session, y)
+        calendar_cache[y] = (
+            parse_calendar_json(cached.get("entries", [])) if cached else []
+        )
+
+    is_hr_plus = requesting_user_role in _HR_PLUS_ROLES
+
     results: list[dict] = []
     updated_count = 0
 
@@ -305,6 +349,7 @@ async def bulk_override_punches(
         clock_out_time = entry.get("last_clock_out")
         leave_type = entry.get("leave_type")
         remark = entry.get("remark")
+        overtime_hours = entry.get("overtime_hours")
 
         # Skip only when literally nothing changes
         if (
@@ -312,8 +357,20 @@ async def bulk_override_punches(
             and clock_out_time is None
             and leave_type is None
             and remark is None
+            and overtime_hours is None
         ):
             continue
+
+        # Labor-law / role gate per day.
+        day_kind = classify_date_kind(calendar_cache[entry_date.year], entry_date)
+        if day_kind == DayKind.REGULAR_LEAVE:
+            raise PermissionError(
+                f"{entry_date} 為例假日（週日），依勞基法不得安排工作或補登"
+            )
+        if day_kind == DayKind.REST_DAY and not is_hr_plus:
+            raise PermissionError(
+                f"{entry_date} 為休息日（週六），僅 HR 或 ADMIN 可補登"
+            )
 
         # Handle punches (existing behavior) — only touch logs when punches change.
         if clock_in_time is not None or clock_out_time is not None:
@@ -352,9 +409,9 @@ async def bulk_override_punches(
                 )
                 await attendance_repository.create_log(session, clock_out_log)
 
-        # Stamp leave_type / remark onto the existing summary (or create a
-        # placeholder) so generate_daily_summary preserves them.
-        if leave_type is not None or remark is not None:
+        # Stamp leave_type / remark / overtime_hours onto the existing summary
+        # (or create a placeholder) so generate_daily_summary preserves them.
+        if leave_type is not None or remark is not None or overtime_hours is not None:
             existing_summaries = await summary_repository.find_by_employee(
                 session, emp_id, start_date=entry_date, end_date=entry_date
             )
@@ -369,6 +426,7 @@ async def bulk_override_punches(
                     status=existing.status,  # placeholder; regenerated next
                     leave_type=leave_type,
                     remark=remark,
+                    overtime_hours=overtime_hours,
                 )
             else:
                 # No existing summary yet — create one with ABSENT placeholder;
@@ -382,6 +440,7 @@ async def bulk_override_punches(
                     status=AttendanceStatus.ABSENT,
                     leave_type=leave_type,
                     remark=remark,
+                    overtime_hours=overtime_hours,
                 )
 
         # Recalculate summary

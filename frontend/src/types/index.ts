@@ -109,6 +109,7 @@ export interface DailyAttendanceSummary {
   readonly status: AttendanceStatus;
   readonly leave_type?: string | null;
   readonly remark?: string | null;
+  readonly overtime_hours?: number | null;
   readonly reason?: string | null;
   readonly shift_time?: string | null;
   readonly submission_status?: SubmissionStatus;
@@ -131,12 +132,20 @@ export interface SystemConfig {
 // ---------------------------------------------------------------------------
 // Workday Calendar
 // ---------------------------------------------------------------------------
+export type DayKind =
+  | "WORKDAY"
+  | "MAKEUP_WORKDAY"
+  | "NATIONAL_HOLIDAY"
+  | "REST_DAY"
+  | "REGULAR_LEAVE";
+
 export interface WorkdayInfo {
   readonly date: string;
   readonly weekday_zh: string;
   readonly is_holiday: boolean;
   readonly description: string;
   readonly is_makeup_workday: boolean;
+  readonly day_kind?: DayKind;
 }
 
 export interface WorkdaysResponse {
@@ -166,6 +175,7 @@ export interface BulkOverrideEntry {
   readonly last_clock_out: string | null;
   readonly leave_type?: string | null;
   readonly remark?: string | null;
+  readonly overtime_hours?: number | null;
 }
 
 export interface BulkOverrideRequest {

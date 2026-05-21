@@ -66,7 +66,7 @@ async def test_csv_export_uses_chinese_headers(db_session):
     assert header == [
         "員工編號", "姓名", "部門", "日期",
         "班別時間", "上班時間", "下班時間",
-        "狀態", "備註", "遲到理由", "送單狀態",
+        "狀態", "備註", "加班時數", "遲到理由", "送單狀態",
     ]
 
 
@@ -99,7 +99,8 @@ async def test_csv_export_translates_status_values(db_session):
     assert data_row[0] == "E041"        # 員工編號
     assert data_row[7] == "請假"          # 狀態
     assert data_row[8] == "特休·上午"     # 備註
-    assert data_row[10] == "已送單"       # 送單狀態
+    assert data_row[9] == ""             # 加班時數 — none
+    assert data_row[11] == "已送單"       # 送單狀態
 
 
 async def test_csv_export_default_excludes_unsubmitted(db_session):
@@ -282,10 +283,11 @@ async def test_export_includes_weekend_continuity_rows(db_session):
     )
     # Friday is a real workday row.
     assert "2026-05-15" in csv_text
-    # Sat and Sun should now appear as 週末 filler rows.
+    # Sat = 休息日, Sun = 例假日 — new labor-law-correct labels.
     assert "2026-05-16" in csv_text
     assert "2026-05-17" in csv_text
-    assert "週末" in csv_text
+    assert "休息日" in csv_text
+    assert "例假日" in csv_text
 
 
 async def test_xlsx_export_grays_holiday_rows(db_session):

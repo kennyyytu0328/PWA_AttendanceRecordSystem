@@ -18,7 +18,14 @@ import { useGeolocation } from "@/hooks/useGeolocation";
 import { apiClient } from "@/lib/api";
 import { BackButton } from "@/components/BackButton";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import type { PunchResponse } from "@/types";
+import type { DayKind, PunchResponse, WorkdaysResponse } from "@/types";
+
+function deriveTodayKindLocal(date: Date): DayKind {
+  const wd = date.getDay();
+  if (wd === 0) return "REGULAR_LEAVE";
+  if (wd === 6) return "REST_DAY";
+  return "WORKDAY";
+}
 
 async function submitPunch(
   latitude: number,
@@ -41,6 +48,13 @@ export default function PunchPage() {
   const [punchResult, setPunchResult] = useState<PunchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Today's day_kind — starts from a local weekday guess so the button
+  // disables immediately on weekends, then upgrades to the
+  // calendar-authoritative answer (which can flip a Saturday back to
+  // MAKEUP_WORKDAY on a 補班 day).
+  const [todayKind, setTodayKind] = useState<DayKind>(
+    deriveTodayKindLocal(new Date()),
+  );
   const [reasonText, setReasonText] = useState("");
   const [reasonSubmitted, setReasonSubmitted] = useState(false);
   const [reasonSubmitting, setReasonSubmitting] = useState(false);
@@ -52,6 +66,35 @@ export default function PunchPage() {
       router.push("/login");
     }
   }, [authLoading, isAuthenticated, router]);
+
+  // Fetch today's calendar day_kind once authenticated so a 補班 Saturday
+  // re-enables the punch button.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = today.getMonth() + 1;
+    const iso = today.toISOString().slice(0, 10);
+    apiClient
+      .get<WorkdaysResponse>(`/api/config/workdays?year=${y}&month=${m}`)
+      .then((data) => {
+        if (cancelled) return;
+        const today_info = data.days.find((d) => d.date === iso);
+        if (today_info?.day_kind) {
+          setTodayKind(today_info.day_kind);
+        }
+      })
+      .catch(() => {
+        // silent — keep the local weekday guess on failure
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
+
+  const isWeekendLocked =
+    todayKind === "REGULAR_LEAVE" || todayKind === "REST_DAY";
 
   // When geolocation resolves after a punch request, submit the punch
   useEffect(() => {
@@ -203,9 +246,9 @@ export default function PunchPage() {
         <div className="flex justify-center">
           <motion.button
             type="button"
-            disabled={isLoading}
+            disabled={isLoading || isWeekendLocked}
             onClick={handlePunch}
-            whileTap={isLoading ? undefined : { scale: 0.95 }}
+            whileTap={isLoading || isWeekendLocked ? undefined : { scale: 0.95 }}
             className="flex h-48 w-48 flex-col items-center justify-center rounded-full bg-gradient-to-br from-[#4ec6c1] to-[#6dcf7c] text-white shadow-xl transition-colors hover:from-[#45b5b0] hover:to-[#5fc06e] focus:ring-4 focus:ring-[#4ec6c1]/40 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isLoading ? (
@@ -221,6 +264,22 @@ export default function PunchPage() {
             )}
           </motion.button>
         </div>
+
+        {/* Weekend lock notice */}
+        {isWeekendLocked && (
+          <div
+            role="note"
+            data-testid="weekend-lock-notice"
+            className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm text-amber-800"
+          >
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+            <span>
+              {todayKind === "REGULAR_LEAVE"
+                ? t("punch.regularLeaveNotice")
+                : t("punch.restDayNotice")}
+            </span>
+          </div>
+        )}
 
         {/* Geolocation Error */}
         {position.error && (

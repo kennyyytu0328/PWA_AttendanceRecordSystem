@@ -12,6 +12,7 @@ from app.models.employee import Role
 from app.repositories import system_config_repository
 from app.schemas.system_config import SystemConfigResponse
 from app.utils.taiwan_calendar import (
+    classify_day_kind,
     fetch_calendar_from_cdn,
     get_month_info_from_data,
     parse_calendar_json,
@@ -190,6 +191,7 @@ async def get_workdays(
                 "is_holiday": d.is_holiday,
                 "description": d.description,
                 "is_makeup_workday": d.is_makeup_workday,
+                "day_kind": classify_day_kind(d).value,
             }
             for d in month_info
         ],

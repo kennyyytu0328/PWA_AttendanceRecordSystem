@@ -338,7 +338,7 @@ async def test_export_csv_format(db_session: AsyncSession) -> None:
     assert rows[0] == [
         "員工編號", "姓名", "部門", "日期",
         "班別時間", "上班時間", "下班時間",
-        "狀態", "備註", "遲到理由", "送單狀態",
+        "狀態", "備註", "加班時數", "遲到理由", "送單狀態",
     ]
     # Data row
     assert len(rows) == 2

@@ -26,6 +26,8 @@ from app.repositories import (
 )
 from app.utils.taiwan_calendar import (
     DayInfo,
+    DayKind,
+    classify_day_kind,
     fetch_calendar_from_cdn,
     is_workday_from_data,
     parse_calendar_json,
@@ -36,7 +38,7 @@ DEFAULT_GRACE_MINUTES = 5
 CHINESE_HEADERS = [
     "員工編號", "姓名", "部門", "日期",
     "班別時間", "上班時間", "下班時間",
-    "狀態", "備註", "遲到理由", "送單狀態",
+    "狀態", "備註", "加班時數", "遲到理由", "送單狀態",
 ]
 
 STATUS_ZH = {
@@ -49,13 +51,20 @@ STATUS_ZH = {
     "LEAVE": "請假",
     # Synthetic statuses produced only by the export pipeline for non-workday
     # continuity rows — never persisted to daily_attendance_summaries.
-    "HOLIDAY": "假日",
-    "WEEKEND": "週末",
+    # HOLIDAY / WEEKEND kept for backwards-compat; new exports prefer the
+    # labor-law-correct REST_DAY / REGULAR_LEAVE / NATIONAL_HOLIDAY values.
+    "HOLIDAY": "國定假日",
+    "WEEKEND": "假日",
+    "REST_DAY": "休息日",
+    "REGULAR_LEAVE": "例假日",
+    "NATIONAL_HOLIDAY": "國定假日",
 }
 
 # Statuses that mark a row as a non-working calendar day filler. Used for
 # Excel gray-fill styling and to identify filler rows during sort.
-_FILLER_STATUSES = frozenset({"HOLIDAY", "WEEKEND"})
+_FILLER_STATUSES = frozenset(
+    {"HOLIDAY", "WEEKEND", "REST_DAY", "REGULAR_LEAVE", "NATIONAL_HOLIDAY"}
+)
 
 
 def _format_shift_time(start: datetime.time, end: datetime.time) -> str:
@@ -66,6 +75,15 @@ def _format_remark(leave_type: str | None, remark: str | None) -> str:
     if leave_type and remark:
         return f"{leave_type}·{remark}"
     return leave_type or remark or ""
+
+
+def _format_overtime_hours(value) -> str:
+    """Render overtime_hours for export — '' when null, else trimmed decimal."""
+    if value is None:
+        return ""
+    # 1.0 → "1"; 1.5 → "1.5"
+    f = float(value)
+    return str(int(f)) if f == int(f) else str(f)
 
 
 def calculate_status(
@@ -164,6 +182,9 @@ async def generate_daily_summary(
     )
     existing_leave_type = existing_rows[0].leave_type if existing_rows else None
     existing_remark = existing_rows[0].remark if existing_rows else None
+    existing_overtime_hours = (
+        existing_rows[0].overtime_hours if existing_rows else None
+    )
 
     first_log = await attendance_repository.find_first_clock_in(session, emp_id, date)
     last_log = await attendance_repository.find_last_clock_out(session, emp_id, date)
@@ -193,6 +214,7 @@ async def generate_daily_summary(
         status=status,
         leave_type=existing_leave_type,
         remark=existing_remark,
+        overtime_hours=existing_overtime_hours,
     )
 
     return summary
@@ -523,6 +545,7 @@ async def export_attendance(
             ),
             "status": s.status.value,
             "remark": _format_remark(s.leave_type, s.remark),
+            "overtime_hours": _format_overtime_hours(s.overtime_hours),
             "reason": reason_map.get(s.id or -1, ""),
             "submission_status": "submitted" if sub else "unsubmitted",
         })
@@ -577,13 +600,17 @@ async def export_attendance(
                 cursor += timedelta(days=1)
                 continue
 
-            # Classify HOLIDAY vs WEEKEND.
-            if day_info is not None and day_info.description:
-                filler_status = "HOLIDAY"
-                filler_remark = day_info.description
+            # Classify filler day status using labor-law DayKind.
+            if day_info is not None:
+                kind = classify_day_kind(day_info)
+            elif cursor.weekday() == 6:
+                kind = DayKind.REGULAR_LEAVE
+            elif cursor.weekday() == 5:
+                kind = DayKind.REST_DAY
             else:
-                filler_status = "WEEKEND"
-                filler_remark = ""
+                kind = DayKind.NATIONAL_HOLIDAY
+            filler_status = kind.value
+            filler_remark = day_info.description if day_info is not None else ""
 
             for emp_id_iter, emp in emp_map.items():
                 if (emp_id_iter, cursor) in existing_pairs:
@@ -607,6 +634,7 @@ async def export_attendance(
                     "last_clock_out": "",
                     "status": filler_status,
                     "remark": filler_remark,
+                    "overtime_hours": "",
                     "reason": "",
                     "submission_status": "submitted" if sub else "unsubmitted",
                 })
@@ -632,6 +660,7 @@ async def export_attendance(
             row["last_clock_out"],
             STATUS_ZH.get(row["status"], row["status"]),
             row["remark"],
+            row.get("overtime_hours", ""),
             row["reason"],
             "已送單" if row["submission_status"] == "submitted" else "未送單",
         ])

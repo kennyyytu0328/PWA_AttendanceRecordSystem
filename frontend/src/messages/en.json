@@ -39,6 +39,8 @@
     "lowAccuracy": "Low accuracy GPS reading detected",
     "lateAlert": "You are late. Please submit a reason below.",
     "earlyLeaveAlert": "You are leaving early. Please submit a reason below.",
+    "regularLeaveNotice": "Today is a regular-leave day (Sunday). Punching is not permitted under labor law.",
+    "restDayNotice": "Today is a rest day (Saturday). Contact HR or ADMIN for 補登 to record overtime.",
     "reasonLabel": "Reason",
     "reasonPlaceholder": "Please explain the reason for being late or leaving early...",
     "reasonSubmit": "Submit Reason",
