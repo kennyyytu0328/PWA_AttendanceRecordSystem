@@ -299,9 +299,12 @@ export default function MonthlyOverridePage() {
     fetchData();
   }, [fetchData]);
 
-  // Resolve which emp_id this page is acting on
+  // Resolve which emp_id this page is acting on.
+  // For HR+, an empty selection falls back to self so Submit Month / status
+  // badge behave the same as Display / Save (which already default to self
+  // when no emp_id is sent to the backend).
   const targetEmpId: string | null = isHrPlus
-    ? selectedEmpId || null
+    ? selectedEmpId || user?.emp_id || null
     : user?.emp_id ?? null;
 
   // Fetch leave types once on mount
