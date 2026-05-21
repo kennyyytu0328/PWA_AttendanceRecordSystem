@@ -18,14 +18,8 @@ import { useGeolocation } from "@/hooks/useGeolocation";
 import { apiClient } from "@/lib/api";
 import { BackButton } from "@/components/BackButton";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { deriveDayKindFromDate } from "@/lib/day-kind";
 import type { DayKind, PunchResponse, WorkdaysResponse } from "@/types";
-
-function deriveTodayKindLocal(date: Date): DayKind {
-  const wd = date.getDay();
-  if (wd === 0) return "REGULAR_LEAVE";
-  if (wd === 6) return "REST_DAY";
-  return "WORKDAY";
-}
 
 async function submitPunch(
   latitude: number,
@@ -53,7 +47,7 @@ export default function PunchPage() {
   // calendar-authoritative answer (which can flip a Saturday back to
   // MAKEUP_WORKDAY on a 補班 day).
   const [todayKind, setTodayKind] = useState<DayKind>(
-    deriveTodayKindLocal(new Date()),
+    deriveDayKindFromDate(new Date()),
   );
   const [reasonText, setReasonText] = useState("");
   const [reasonSubmitted, setReasonSubmitted] = useState(false);
@@ -67,12 +61,14 @@ export default function PunchPage() {
     }
   }, [authLoading, isAuthenticated, router]);
 
-  // Fetch today's calendar day_kind once authenticated so a 補班 Saturday
-  // re-enables the punch button.
+  // Fetch today's calendar day_kind to handle 補班 Saturday — the only flip
+  // that can re-enable the button. Sun and weekdays are always correct via
+  // the local weekday guess, so skip the probe for them.
   useEffect(() => {
     if (!isAuthenticated) return;
-    let cancelled = false;
     const today = new Date();
+    if (deriveDayKindFromDate(today) !== "REST_DAY") return;
+    let cancelled = false;
     const y = today.getFullYear();
     const m = today.getMonth() + 1;
     const iso = today.toISOString().slice(0, 10);

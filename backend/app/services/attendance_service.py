@@ -21,8 +21,10 @@ from app.repositories import (
 from app.services import geolocation_service, reporting_service
 from app.services.permission_service import APPROVE_OVERRIDE, has_permission
 from app.utils.taiwan_calendar import (
+    DayInfo,
     DayKind,
-    classify_date_kind,
+    classify_indexed_date_kind,
+    index_calendar,
     parse_calendar_json,
 )
 
@@ -30,13 +32,13 @@ from app.utils.taiwan_calendar import (
 _HR_PLUS_ROLES = frozenset({Role.HR, Role.ADMIN})
 
 
-async def _classify_calendar_date(
-    session: AsyncSession, target: datetime.date
-) -> DayKind:
-    """Look up DayKind for `target` using the cached Taiwan calendar."""
-    cached = await system_config_repository.get_workday_calendar(session, target.year)
+async def _load_calendar_index(
+    session: AsyncSession, year: int
+) -> dict[datetime.date, DayInfo]:
+    """Cached Taiwan calendar as a date→DayInfo dict for O(1) day_kind lookups."""
+    cached = await system_config_repository.get_workday_calendar(session, year)
     data = parse_calendar_json(cached.get("entries", [])) if cached else []
-    return classify_date_kind(data, target)
+    return index_calendar(data)
 
 __all__ = [
     "PunchResult",
@@ -90,7 +92,9 @@ async def punch(
     # forbids regular Sunday work and Saturday overtime needs HR/ADMIN-supplied
     # 補登 instead of live punching. Makeup workdays (補班週六) bypass this.
     today = datetime.datetime.now().date()
-    day_kind = await _classify_calendar_date(session, today)
+    day_kind = classify_indexed_date_kind(
+        await _load_calendar_index(session, today.year), today
+    )
     if day_kind == DayKind.REGULAR_LEAVE:
         raise ValueError(
             "Sunday is 例假日 — live punching is not permitted (labor law)."
@@ -312,33 +316,26 @@ async def bulk_override_punches(
     PermissionError
         If requesting user lacks permission.
     """
-    # Permission check
-    if emp_id != requesting_user_id:
-        role_hierarchy = [Role.EMPLOYEE, Role.MANAGER, Role.HR, Role.ADMIN]
-        role_index = role_hierarchy.index(requesting_user_role)
-        hr_index = role_hierarchy.index(Role.HR)
-        if role_index < hr_index:
-            raise PermissionError(
-                "You cannot override another employee's punches"
-            )
+    is_hr_plus = requesting_user_role in _HR_PLUS_ROLES
+
+    # Permission check — only the employee themselves or HR+ can override.
+    if emp_id != requesting_user_id and not is_hr_plus:
+        raise PermissionError(
+            "You cannot override another employee's punches"
+        )
 
     # Verify employee exists
     employee = await employee_repository.find_by_id(session, emp_id)
     if employee is None:
         raise ValueError(f"Employee {emp_id} not found")
 
-    # Pre-load calendars for every year touched by the request so we can
-    # gate Saturday (休息日 — HR+ only) and Sunday (例假日 — nobody) without
-    # hitting the DB per-entry.
+    # Pre-load calendars for every year touched by the request as date→DayInfo
+    # indexes so the Saturday (休息日 HR+ only) / Sunday (例假日 nobody) gate
+    # is O(1) per entry instead of an O(n) linear scan.
     years_touched = {e["date"].year for e in entries}
-    calendar_cache: dict[int, list] = {}
-    for y in years_touched:
-        cached = await system_config_repository.get_workday_calendar(session, y)
-        calendar_cache[y] = (
-            parse_calendar_json(cached.get("entries", [])) if cached else []
-        )
-
-    is_hr_plus = requesting_user_role in _HR_PLUS_ROLES
+    calendar_index: dict[int, dict[datetime.date, DayInfo]] = {
+        y: await _load_calendar_index(session, y) for y in years_touched
+    }
 
     results: list[dict] = []
     updated_count = 0
@@ -362,7 +359,9 @@ async def bulk_override_punches(
             continue
 
         # Labor-law / role gate per day.
-        day_kind = classify_date_kind(calendar_cache[entry_date.year], entry_date)
+        day_kind = classify_indexed_date_kind(
+            calendar_index[entry_date.year], entry_date
+        )
         if day_kind == DayKind.REGULAR_LEAVE:
             raise PermissionError(
                 f"{entry_date} 為例假日（週日），依勞基法不得安排工作或補登"

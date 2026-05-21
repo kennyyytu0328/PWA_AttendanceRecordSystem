@@ -9,6 +9,7 @@ import { RemarkCell } from "@/components/RemarkCell";
 import { WarningModal, type AbnormalDay, type AbnormalStatus } from "@/components/WarningModal";
 
 import { apiClient } from "@/lib/api";
+import { deriveDayKindFromWorkday } from "@/lib/day-kind";
 import { leaveTypesApi } from "@/lib/api/leave-types";
 import {
   monthlySubmissionsApi,
@@ -77,15 +78,24 @@ const OVERTIME_OPTIONS: readonly number[] = [
   1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8,
 ];
 
-function deriveDayKind(d: WorkdayInfo): DayKind {
-  if (d.day_kind) return d.day_kind;
-  // Fallback for older backends — replicates classify_day_kind() exactly.
-  const wd = new Date(d.date).getDay(); // 0 = Sunday, 6 = Saturday
-  if (wd === 0) return "REGULAR_LEAVE";
-  if (d.is_makeup_workday) return "MAKEUP_WORKDAY";
-  if (wd === 6 && d.is_holiday) return "REST_DAY";
-  if (d.is_holiday) return "NATIONAL_HOLIDAY";
-  return "WORKDAY";
+const TARDY_STATUSES: ReadonlySet<string> = new Set([
+  "LATE",
+  "EARLY_LEAVE",
+  "LATE_AND_EARLY_LEAVE",
+]);
+
+function getRowClass(row: DayRow): string {
+  if (row.day_kind === "REGULAR_LEAVE") return "bg-rose-50 text-rose-400";
+  if (row.day_kind === "REST_DAY") {
+    return row.isEditable
+      ? "bg-orange-50/60 hover:bg-orange-50"
+      : "bg-orange-50 text-orange-400";
+  }
+  if (row.is_holiday && !row.is_makeup_workday) return "bg-gray-50 text-gray-400";
+  if (TARDY_STATUSES.has(row.status))
+    return "bg-red-100 hover:bg-red-200 border-l-4 border-l-red-500 font-medium";
+  if (row.is_makeup_workday) return "bg-amber-50/50";
+  return "hover:bg-gray-50";
 }
 
 const ABNORMAL_STATUSES: ReadonlySet<string> = new Set([
@@ -301,7 +311,7 @@ export default function MonthlyOverridePage() {
 
       const builtRows: DayRow[] = workdays.days.map((day: WorkdayInfo) => {
         const summary = summaryMap[day.date];
-        const dayKind = deriveDayKind(day);
+        const dayKind = deriveDayKindFromWorkday(day);
         // Editability matrix:
         //   REGULAR_LEAVE (Sun) → nobody can edit
         //   REST_DAY (Sat)      → only HR+ can edit
@@ -811,25 +821,7 @@ export default function MonthlyOverridePage() {
               </thead>
               <tbody>
                 {rows.map((row) => {
-                  const isTardy =
-                    row.status === "LATE" ||
-                    row.status === "EARLY_LEAVE" ||
-                    row.status === "LATE_AND_EARLY_LEAVE";
-                  const isRegularLeave = row.day_kind === "REGULAR_LEAVE";
-                  const isRestDay = row.day_kind === "REST_DAY";
-                  const rowClass = isRegularLeave
-                    ? "bg-rose-50 text-rose-400"
-                    : isRestDay
-                      ? row.isEditable
-                        ? "bg-orange-50/60 hover:bg-orange-50"
-                        : "bg-orange-50 text-orange-400"
-                      : row.is_holiday && !row.is_makeup_workday
-                        ? "bg-gray-50 text-gray-400"
-                        : isTardy
-                          ? "bg-red-100 hover:bg-red-200 border-l-4 border-l-red-500 font-medium"
-                          : row.is_makeup_workday
-                            ? "bg-amber-50/50"
-                            : "hover:bg-gray-50";
+                  const rowClass = getRowClass(row);
                   return (
                   <tr
                     key={row.date}

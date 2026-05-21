@@ -87,22 +87,38 @@ def parse_calendar_json(raw_entries: list[dict[str, Any]]) -> list[DayInfo]:
     return result
 
 
-def classify_date_kind(data: list[DayInfo], target: datetime.date) -> DayKind:
-    """Classify a date using parsed calendar data, with weekday fallback.
+def index_calendar(data: list[DayInfo]) -> dict[datetime.date, DayInfo]:
+    """Build a date→DayInfo dict for O(1) lookups. Cheap; build once per year."""
+    return {d.date: d for d in data}
 
-    If `target` is missing from the data, fall back to: Sunday → REGULAR_LEAVE,
-    Saturday → REST_DAY, weekday → WORKDAY. This keeps the labor-law lock
-    correct even when calendar fetch failed.
-    """
-    for day in data:
-        if day.date == target:
-            return classify_day_kind(day)
+
+def _weekday_fallback(target: datetime.date) -> DayKind:
     weekday = target.weekday()
     if weekday == 6:
         return DayKind.REGULAR_LEAVE
     if weekday == 5:
         return DayKind.REST_DAY
     return DayKind.WORKDAY
+
+
+def classify_date_kind(data: list[DayInfo], target: datetime.date) -> DayKind:
+    """Classify a date using parsed calendar data, with weekday fallback.
+
+    O(n) list scan — use ``classify_indexed_date_kind`` when classifying many
+    dates against the same calendar.
+    """
+    for day in data:
+        if day.date == target:
+            return classify_day_kind(day)
+    return _weekday_fallback(target)
+
+
+def classify_indexed_date_kind(
+    index: dict[datetime.date, DayInfo], target: datetime.date
+) -> DayKind:
+    """O(1) classification using a pre-built index from ``index_calendar``."""
+    day = index.get(target)
+    return classify_day_kind(day) if day is not None else _weekday_fallback(target)
 
 
 def is_workday_from_data(data: list[DayInfo], target: datetime.date) -> bool:
