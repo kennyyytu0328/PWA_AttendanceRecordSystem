@@ -88,6 +88,15 @@ secrets/
 credentials/
 
 # =============================================================================
+# Secret / credential files (never commit plaintext passwords, JWT secrets)
+# =============================================================================
+Server_DB_Password_And_JWT_Secret.txt
+Sever_DB_Password.txt
+*[Pp]assword*.txt
+*[Ss]ecret*.txt
+*[Cc]redential*.txt
+
+# =============================================================================
 # OS
 # =============================================================================
 *.log
