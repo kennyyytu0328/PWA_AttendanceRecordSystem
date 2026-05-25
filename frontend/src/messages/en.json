@@ -318,7 +318,11 @@
     "warningTitle": "{count} abnormal day(s) detected",
     "warningBody": "The following dates have abnormal status. Proceed anyway?",
     "backToEdit": "Back to Edit",
-    "proceed": "Proceed"
+    "proceed": "Proceed",
+    "overtimeHours": "Overtime (hrs)",
+    "overtimePunchTitle": "{count} day(s) with overtime missing punch times",
+    "overtimePunchBody": "Overtime means actual work, so it must have both clock-in and clock-out times. Please fill in the punch times for the following dates before saving:",
+    "overtimePunchHint": "Overtime needs clock-in and clock-out"
   },
   "calendarStatus": {
     "title": "Workday Calendar Status",

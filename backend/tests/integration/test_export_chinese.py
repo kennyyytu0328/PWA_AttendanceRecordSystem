@@ -64,7 +64,7 @@ async def test_csv_export_uses_chinese_headers(db_session):
     reader = csv.reader(io.StringIO(csv_text))
     header = next(reader)
     assert header == [
-        "員工編號", "姓名", "部門", "日期",
+        "員工編號", "姓名", "部門", "日期", "星期",
         "班別時間", "上班時間", "下班時間",
         "狀態", "備註", "加班時數", "遲到理由", "送單狀態",
     ]
@@ -97,10 +97,74 @@ async def test_csv_export_translates_status_values(db_session):
     rows = list(csv.reader(io.StringIO(csv_text)))
     data_row = rows[1]
     assert data_row[0] == "E041"        # 員工編號
-    assert data_row[7] == "請假"          # 狀態
-    assert data_row[8] == "特休·上午"     # 備註
-    assert data_row[9] == ""             # 加班時數 — none
-    assert data_row[11] == "已送單"       # 送單狀態
+    assert data_row[4] == "星期四"        # 星期 (2026-05-14 is a Thursday)
+    assert data_row[8] == "請假"          # 狀態
+    assert data_row[9] == "特休·上午"     # 備註
+    assert data_row[10] == ""            # 加班時數 — none
+    assert data_row[12] == "已送單"       # 送單狀態
+
+
+async def test_csv_export_rest_day_work_annotated_in_remark(db_session):
+    """A non-makeup Saturday with overtime work is annotated 休息日加班 in 備註,
+    shows 星期六 in the new weekday column, and stays 正常 in 狀態."""
+    import decimal
+
+    from app.models.attendance_log import AttendanceLog, WorkMode
+    from app.repositories import system_config_repository
+
+    await _seed_employee_with_shift(
+        db_session, emp_id="E_SAT", shift_start_time="09:00", shift_end_time="18:00"
+    )
+    # 2026-05-09 is a Saturday → REST_DAY.
+    db_session.add_all(
+        [
+            AttendanceLog(
+                emp_id="E_SAT",
+                timestamp=datetime.datetime(2026, 5, 9, 10, 0),
+                latitude=25.0, longitude=121.5, accuracy=10.0,
+                ip_address="127.0.0.1", work_mode=WorkMode.OFFICE,
+            ),
+            AttendanceLog(
+                emp_id="E_SAT",
+                timestamp=datetime.datetime(2026, 5, 9, 12, 0),
+                latitude=25.0, longitude=121.5, accuracy=10.0,
+                ip_address="127.0.0.1", work_mode=WorkMode.OFFICE,
+            ),
+        ]
+    )
+    await db_session.commit()
+    await summary_repository.upsert_summary(
+        db_session,
+        emp_id="E_SAT",
+        date=datetime.date(2026, 5, 9),
+        first_clock_in=datetime.datetime(2026, 5, 9, 10, 0),
+        last_clock_out=datetime.datetime(2026, 5, 9, 12, 0),
+        status=AttendanceStatus.NORMAL,
+        overtime_hours=decimal.Decimal("3"),
+    )
+    await monthly_submission_repository.upsert(
+        db_session, emp_id="E_SAT", year=2026, month=5
+    )
+    await system_config_repository.set_workday_calendar(
+        db_session,
+        year=2026,
+        entries=[{"date": "20260509", "week": "六", "isHoliday": True, "description": ""}],
+        updated_by="test",
+    )
+
+    csv_text = await reporting_service.export_attendance(
+        db_session,
+        start_date=datetime.date(2026, 5, 9),
+        end_date=datetime.date(2026, 5, 9),
+        format="csv",
+    )
+    rows = list(csv.reader(io.StringIO(csv_text)))
+    data_row = rows[1]
+    assert data_row[3] == "2026-05-09"   # 日期
+    assert data_row[4] == "星期六"         # 星期
+    assert data_row[8] == "正常"           # 狀態 — rest-day work is NORMAL
+    assert data_row[9] == "休息日加班"      # 備註
+    assert data_row[10] == "3"            # 加班時數
 
 
 async def test_csv_export_default_excludes_unsubmitted(db_session):

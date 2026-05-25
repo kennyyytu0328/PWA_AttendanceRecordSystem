@@ -10,6 +10,7 @@ Tests cover:
 
 import csv
 import datetime
+import decimal
 import io
 import json
 
@@ -336,7 +337,7 @@ async def test_export_csv_format(db_session: AsyncSession) -> None:
 
     # Header row (Chinese)
     assert rows[0] == [
-        "員工編號", "姓名", "部門", "日期",
+        "員工編號", "姓名", "部門", "日期", "星期",
         "班別時間", "上班時間", "下班時間",
         "狀態", "備註", "加班時數", "遲到理由", "送單狀態",
     ]
@@ -345,7 +346,8 @@ async def test_export_csv_format(db_session: AsyncSession) -> None:
     assert rows[1][0] == "EMP030"
     assert rows[1][1] == "Alice"
     assert rows[1][2] == "Engineering"
-    assert rows[1][7] == "正常"  # status: NORMAL → 正常
+    assert rows[1][4] == "星期四"  # 2026-03-19 is a Thursday
+    assert rows[1][8] == "正常"  # status: NORMAL → 正常
 
 
 # ---------------------------------------------------------------------------
@@ -690,6 +692,132 @@ async def test_generate_all_summaries_does_not_create_absent_for_employee_on_lea
     # E091 gets ABSENT (control case)
     assert len(e091) == 1
     assert e091[0].status == AttendanceStatus.ABSENT
+
+
+async def test_generate_daily_summary_preserves_overtime_without_punch(
+    db_session: AsyncSession,
+) -> None:
+    """A summary holding only overtime_hours (no punch, no leave) must survive
+    a recompute instead of being dropped to None.
+
+    Regression: overtime entered on a rest day / no-punch day was written to the
+    DB but vanished on the next read because generate_daily_summary returned None.
+    """
+    from app.repositories import summary_repository
+    from app.services import reporting_service
+
+    await _create_employee(db_session, emp_id="E200")
+    await summary_repository.upsert_summary(
+        db_session,
+        emp_id="E200",
+        date=datetime.date(2026, 5, 16),
+        first_clock_in=None,
+        last_clock_out=None,
+        status=AttendanceStatus.ABSENT,
+        overtime_hours=decimal.Decimal("2.5"),
+    )
+
+    summary = await reporting_service.generate_daily_summary(
+        db_session, "E200", datetime.date(2026, 5, 16)
+    )
+
+    assert summary is not None
+    assert summary.overtime_hours == decimal.Decimal("2.5")
+
+
+@freeze_time("2026-03-21 20:00:00")
+async def test_generate_all_summaries_preserves_overtime_on_rest_day(
+    db_session: AsyncSession,
+) -> None:
+    """Overtime on a non-workday (rest day / weekend) must be returned on read.
+
+    2026-03-21 is a Saturday (no calendar data → fallback non-workday). The
+    rest-day overtime row has no punch and no leave, so generate_all_summaries
+    must still emit it rather than returning [].
+    """
+    from app.repositories import summary_repository
+    from app.services import reporting_service
+
+    target_date = datetime.date(2026, 3, 21)  # Saturday
+    await _create_employee(db_session, emp_id="E210")
+    await summary_repository.upsert_summary(
+        db_session,
+        emp_id="E210",
+        date=target_date,
+        first_clock_in=None,
+        last_clock_out=None,
+        status=AttendanceStatus.ABSENT,
+        overtime_hours=decimal.Decimal("4.0"),
+    )
+
+    summaries = await reporting_service.generate_all_summaries(
+        db_session, target_date
+    )
+
+    e210 = [s for s in summaries if s.emp_id == "E210"]
+    assert len(e210) == 1
+    assert e210[0].overtime_hours == decimal.Decimal("4.0")
+
+
+async def test_calculate_status_rest_day_work_is_normal(
+    db_session: AsyncSession,
+) -> None:
+    """Punches on a 休息日 are overtime work — no scheduled shift, so neither
+    LATE nor EARLY_LEAVE applies. 10:00–12:00 (which would be
+    LATE_AND_EARLY_LEAVE on a workday) resolves to NORMAL."""
+    from app.services.reporting_service import calculate_status
+    from app.utils.taiwan_calendar import DayKind
+
+    status = calculate_status(
+        datetime.time(9, 0),
+        datetime.time(18, 0),
+        datetime.datetime(2026, 5, 23, 10, 0),
+        datetime.datetime(2026, 5, 23, 12, 0),
+        day_kind=DayKind.REST_DAY,
+    )
+
+    assert status == AttendanceStatus.NORMAL
+
+
+async def test_calculate_status_workday_still_flags_late_and_early(
+    db_session: AsyncSession,
+) -> None:
+    """Regression guard: without a non-working day_kind, 10:00–12:00 on a
+    normal workday stays LATE_AND_EARLY_LEAVE."""
+    from app.services.reporting_service import calculate_status
+
+    status = calculate_status(
+        datetime.time(9, 0),
+        datetime.time(18, 0),
+        datetime.datetime(2026, 5, 22, 10, 0),
+        datetime.datetime(2026, 5, 22, 12, 0),
+    )
+
+    assert status == AttendanceStatus.LATE_AND_EARLY_LEAVE
+
+
+async def test_generate_daily_summary_rest_day_overtime_is_normal(
+    db_session: AsyncSession,
+) -> None:
+    """A Saturday (休息日) with punches resolves to NORMAL via the weekday
+    fallback, not LATE/EARLY_LEAVE."""
+    from app.services.reporting_service import generate_daily_summary
+
+    await _create_employee(db_session, "EMP300")
+    # 2026-05-23 is a Saturday → REST_DAY via weekday fallback.
+    await _create_attendance_log(
+        db_session, "EMP300", datetime.datetime(2026, 5, 23, 10, 0)
+    )
+    await _create_attendance_log(
+        db_session, "EMP300", datetime.datetime(2026, 5, 23, 12, 0)
+    )
+
+    summary = await generate_daily_summary(
+        db_session, "EMP300", datetime.date(2026, 5, 23)
+    )
+
+    assert summary is not None
+    assert summary.status == AttendanceStatus.NORMAL
 
 
 # ---------------------------------------------------------------------------

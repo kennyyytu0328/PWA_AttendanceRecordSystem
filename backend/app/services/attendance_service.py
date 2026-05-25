@@ -130,7 +130,7 @@ async def punch(
         from app.services import reporting_service
 
         summary = await reporting_service.generate_daily_summary(
-            session, emp_id, saved_log.timestamp.date()
+            session, emp_id, saved_log.timestamp.date(), day_kind=day_kind
         )
         if summary is not None:
             summary_id = summary.id
@@ -442,9 +442,10 @@ async def bulk_override_punches(
                     overtime_hours=overtime_hours,
                 )
 
-        # Recalculate summary
+        # Recalculate summary (pass the calendar-accurate day_kind so weekend /
+        # holiday overtime isn't mislabeled LATE/EARLY_LEAVE).
         summary = await reporting_service.generate_daily_summary(
-            session, emp_id, entry_date
+            session, emp_id, entry_date, day_kind=day_kind
         )
 
         results.append({

@@ -1,10 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Calendar, ChevronLeft, ChevronRight, Save, Send } from "lucide-react";
+import {
+  AlertTriangle,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Save,
+  Send,
+} from "lucide-react";
 
 import { BackButton } from "@/components/BackButton";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { OvertimePunchModal } from "@/components/OvertimePunchModal";
 import { RemarkCell } from "@/components/RemarkCell";
 import { WarningModal, type AbnormalDay, type AbnormalStatus } from "@/components/WarningModal";
 
@@ -54,6 +62,18 @@ function extractTime(iso: string | null): string {
   return `${h}:${m}`;
 }
 
+/**
+ * A single physical punch is stored as first_clock_in === last_clock_out
+ * (First-In-Last-Out collapsing to one record). It means "clocked in, no
+ * clock-out yet", so the echoed clock-out is misleading and must not display.
+ */
+function isSinglePunch(summary: DailyAttendanceSummary): boolean {
+  return (
+    summary.first_clock_in != null &&
+    summary.first_clock_in === summary.last_clock_out
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -75,7 +95,7 @@ interface DayRow {
 }
 
 const OVERTIME_OPTIONS: readonly number[] = [
-  1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8,
+  1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6,
 ];
 
 const TARDY_STATUSES: ReadonlySet<string> = new Set([
@@ -84,7 +104,22 @@ const TARDY_STATUSES: ReadonlySet<string> = new Set([
   "LATE_AND_EARLY_LEAVE",
 ]);
 
+/**
+ * Overtime implies actual work, so it requires both a clock-in and a clock-out.
+ * A row with overtime set but either punch missing is a data-entry error that
+ * must be fixed before saving.
+ */
+function rowNeedsPunchForOvertime(row: DayRow): boolean {
+  return (
+    row.isEditable &&
+    row.overtimeHours != null &&
+    (row.clockIn.trim() === "" || row.clockOut.trim() === "")
+  );
+}
+
 function getRowClass(row: DayRow): string {
+  if (rowNeedsPunchForOvertime(row))
+    return "bg-red-50 border-l-4 border-l-red-500";
   if (row.day_kind === "REGULAR_LEAVE") return "bg-rose-50 text-rose-400";
   if (row.day_kind === "REST_DAY") {
     return row.isEditable
@@ -220,6 +255,7 @@ export default function MonthlyOverridePage() {
 
   // Submit-month flow
   const [warningOpen, setWarningOpen] = useState(false);
+  const [overtimeModalOpen, setOvertimeModalOpen] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState(false);
 
   // Derived: unique departments & filtered employees
@@ -335,7 +371,10 @@ export default function MonthlyOverridePage() {
           is_makeup_workday: day.is_makeup_workday,
           day_kind: dayKind,
           clockIn: summary ? extractTime(summary.first_clock_in) : "",
-          clockOut: summary ? extractTime(summary.last_clock_out) : "",
+          clockOut:
+            summary && !isSinglePunch(summary)
+              ? extractTime(summary.last_clock_out)
+              : "",
           status: summary?.status ?? "",
           isEditable,
           leaveType: summary?.leave_type ?? null,
@@ -478,6 +517,16 @@ export default function MonthlyOverridePage() {
 
   // Save overrides
   const handleSave = useCallback(async () => {
+    // Block: overtime requires both punch times. Surface the offending days in
+    // a modal and abort the save until the user fills in the clock-in/out.
+    const overtimePunchErrors = rows
+      .filter(rowNeedsPunchForOvertime)
+      .map((row) => row.date);
+    if (overtimePunchErrors.length > 0) {
+      setOvertimeModalOpen(true);
+      return;
+    }
+
     const changedEntries: BulkOverrideEntry[] = rows
       .filter((row, idx) => {
         const orig = originalRows[idx];
@@ -550,6 +599,11 @@ export default function MonthlyOverridePage() {
       leaveType: row.leaveType,
       remark: row.remark,
     }));
+
+  // Days with overtime but a missing punch time — drives the blocking modal.
+  const overtimePunchErrorDates: readonly string[] = rows
+    .filter(rowNeedsPunchForOvertime)
+    .map((row) => row.date);
 
   // Perform the actual submission against the API
   const performSubmit = useCallback(async () => {
@@ -845,7 +899,11 @@ export default function MonthlyOverridePage() {
                           onChange={(e) =>
                             handleClockInChange(row.date, e.target.value)
                           }
-                          className="w-20 rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-1 focus:ring-[#4ec6c1] focus:outline-none"
+                          className={`w-20 rounded-lg border px-2 py-1 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-1 focus:ring-[#4ec6c1] focus:outline-none ${
+                            row.overtimeHours != null && row.clockIn.trim() === ""
+                              ? "border-red-400 bg-red-50"
+                              : "border-gray-300"
+                          }`}
                         />
                       ) : (
                         <span className="text-gray-400">-</span>
@@ -864,7 +922,11 @@ export default function MonthlyOverridePage() {
                           onChange={(e) =>
                             handleClockOutChange(row.date, e.target.value)
                           }
-                          className="w-20 rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-1 focus:ring-[#4ec6c1] focus:outline-none"
+                          className={`w-20 rounded-lg border px-2 py-1 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-1 focus:ring-[#4ec6c1] focus:outline-none ${
+                            row.overtimeHours != null && row.clockOut.trim() === ""
+                              ? "border-red-400 bg-red-50"
+                              : "border-gray-300"
+                          }`}
                         />
                       ) : (
                         <span className="text-gray-400">-</span>
@@ -896,21 +958,38 @@ export default function MonthlyOverridePage() {
                     )}
                     <td className="px-4 py-3">
                       {row.isEditable ? (
-                        <select
-                          data-testid="overtime-select"
-                          value={row.overtimeHours ?? ""}
-                          onChange={(e) =>
-                            handleOvertimeChange(row.date, e.target.value)
-                          }
-                          className="rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-1 focus:ring-[#4ec6c1] focus:outline-none"
-                        >
-                          <option value="">—</option>
-                          {OVERTIME_OPTIONS.map((h) => (
-                            <option key={h} value={h}>
-                              {h}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            data-testid="overtime-select"
+                            value={row.overtimeHours ?? ""}
+                            onChange={(e) =>
+                              handleOvertimeChange(row.date, e.target.value)
+                            }
+                            className={`rounded-lg border px-2 py-1 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-1 focus:ring-[#4ec6c1] focus:outline-none ${
+                              rowNeedsPunchForOvertime(row)
+                                ? "border-red-400 bg-red-50"
+                                : "border-gray-300"
+                            }`}
+                          >
+                            <option value="">—</option>
+                            {OVERTIME_OPTIONS.map((h) => (
+                              <option key={h} value={h}>
+                                {h}
+                              </option>
+                            ))}
+                          </select>
+                          {rowNeedsPunchForOvertime(row) && (
+                            <span
+                              className="flex items-center text-red-500"
+                              title={t("monthlyOverride.overtimePunchHint")}
+                            >
+                              <AlertTriangle className="h-4 w-4" aria-hidden />
+                              <span className="sr-only">
+                                {t("monthlyOverride.overtimePunchHint")}
+                              </span>
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}
@@ -931,6 +1010,11 @@ export default function MonthlyOverridePage() {
         abnormalDays={abnormalDays}
         onBackToEdit={handleWarningBack}
         onProceed={handleWarningProceed}
+      />
+      <OvertimePunchModal
+        open={overtimeModalOpen}
+        dates={overtimePunchErrorDates}
+        onClose={() => setOvertimeModalOpen(false)}
       />
     </div>
   );

@@ -317,3 +317,110 @@ describe("MonthlyOverridePage submission flow", () => {
     });
   });
 });
+
+describe("MonthlyOverridePage single-punch display", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    wireApi();
+    mockGetStatus.mockResolvedValue({ submitted: false, submitted_at: null });
+  });
+
+  it("blanks the clock-out when clock-in === clock-out (single punch), keeping the time in clock-in", async () => {
+    // A single physical punch is stored as first_clock_in === last_clock_out.
+    // The echoed clock-out is misleading ("clocked in, never clocked out"), so
+    // it must render blank while clock-in keeps the time.
+    mockGet.mockImplementation((url: string) => {
+      if (url.startsWith("/api/config/workdays")) {
+        return Promise.resolve(buildWorkdays());
+      }
+      if (url.startsWith("/api/attendance/summaries")) {
+        return Promise.resolve([
+          {
+            id: 10,
+            emp_id: "EMP001",
+            date: "2026-05-01",
+            first_clock_in: "2026-05-01T09:44:19",
+            last_clock_out: "2026-05-01T09:44:19",
+            status: "LATE",
+            leave_type: null,
+            remark: null,
+          },
+        ]);
+      }
+      if (url.startsWith("/api/employees")) {
+        return Promise.resolve([]);
+      }
+      return Promise.reject(new Error(`unmocked get: ${url}`));
+    });
+    await renderPage();
+
+    expect(screen.getAllByTestId("clock-in-input")[0]).toHaveValue("09:44");
+    expect(screen.getAllByTestId("clock-out-input")[0]).toHaveValue("");
+  });
+});
+
+describe("MonthlyOverridePage overtime punch-time validation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    wireApi();
+    mockGetStatus.mockResolvedValue({ submitted: false, submitted_at: null });
+  });
+
+  it("blocks save and shows a modal when overtime is set without complete punch times", async () => {
+    await renderPage();
+
+    // 2026-05-01 is the first editable row and has both punch times.
+    // Clear its clock-out, then set overtime → invalid (overtime needs both punches).
+    await act(async () => {
+      fireEvent.change(screen.getAllByTestId("clock-out-input")[0], {
+        target: { value: "" },
+      });
+    });
+    await act(async () => {
+      fireEvent.change(screen.getAllByTestId("overtime-select")[0], {
+        target: { value: "2" },
+      });
+    });
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: /monthlyOverride\.save$/ }),
+      );
+    });
+
+    // A blocking modal lists the offending date; the PUT is never sent.
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("2026-05-01");
+    expect(mockPut).not.toHaveBeenCalled();
+  });
+
+  it("allows save when overtime is set and both punch times are present", async () => {
+    await renderPage();
+
+    // 2026-05-01 already has clock-in 09:30 and clock-out 18:00 → setting overtime is valid.
+    await act(async () => {
+      fireEvent.change(screen.getAllByTestId("overtime-select")[0], {
+        target: { value: "2" },
+      });
+    });
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: /monthlyOverride\.save$/ }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(mockPut).toHaveBeenCalled();
+    });
+
+    const [, body] = mockPut.mock.calls[0];
+    const typedBody = body as {
+      entries: ReadonlyArray<{ date: string; overtime_hours: number | null }>;
+    };
+    expect(typedBody.entries[0]).toMatchObject({
+      date: "2026-05-01",
+      overtime_hours: 2,
+    });
+  });
+});

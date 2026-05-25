@@ -141,6 +141,33 @@ describe("ReportsPage – new columns and submission filter", () => {
     expect(screen.getByText("reports.submissionStatus")).toBeInTheDocument();
   });
 
+  it("blanks the clock-out for a single-punch row (clock-in === clock-out)", async () => {
+    const ts = "2026-05-14T01:00:00Z";
+    mockGet.mockImplementation((url: string) => {
+      if (url.startsWith("/api/employees")) return Promise.resolve([]);
+      if (url.startsWith("/api/reports/daily")) {
+        return Promise.resolve([
+          makeRow({
+            first_clock_in: ts,
+            last_clock_out: ts,
+            status: "LATE",
+            remark: "x",
+            reason: "y",
+          }),
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    render(<ReportsPage />);
+    await waitFor(() => expect(mockGet).toHaveBeenCalled());
+
+    // A single punch echoes clock-in into clock-out; the clock-out must show
+    // the "no record" placeholder, appearing exactly once.
+    expect(await screen.findByText("reports.noRecord")).toBeInTheDocument();
+    expect(screen.getAllByText("reports.noRecord")).toHaveLength(1);
+  });
+
   it("renders the submission filter for HR users and refetches with submission_filter param when changed", async () => {
     render(<ReportsPage />);
 

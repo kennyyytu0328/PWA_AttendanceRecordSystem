@@ -27,6 +27,8 @@ from app.repositories import (
 from app.utils.taiwan_calendar import (
     DayInfo,
     DayKind,
+    _weekday_fallback,
+    classify_date_kind,
     classify_day_kind,
     fetch_calendar_from_cdn,
     is_workday_from_data,
@@ -35,8 +37,14 @@ from app.utils.taiwan_calendar import (
 
 DEFAULT_GRACE_MINUTES = 5
 
+# Non-working days have no scheduled shift, so late / early-leave / abnormal
+# don't apply — any punch on these days is overtime work and counts as NORMAL.
+_NON_WORKING_DAY_KINDS = frozenset(
+    {DayKind.REST_DAY, DayKind.REGULAR_LEAVE, DayKind.NATIONAL_HOLIDAY}
+)
+
 CHINESE_HEADERS = [
-    "員工編號", "姓名", "部門", "日期",
+    "員工編號", "姓名", "部門", "日期", "星期",
     "班別時間", "上班時間", "下班時間",
     "狀態", "備註", "加班時數", "遲到理由", "送單狀態",
 ]
@@ -86,6 +94,40 @@ def _format_overtime_hours(value) -> str:
     return str(int(f)) if f == int(f) else str(f)
 
 
+_WEEKDAY_FULL_ZH = [
+    "星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日",
+]
+
+
+def _weekday_zh(d: datetime.date) -> str:
+    """Map a date to 星期一…星期日 (Mon=星期一) for the export 星期 column."""
+    return _WEEKDAY_FULL_ZH[d.weekday()]
+
+
+# Day-kind → 備註 overtime label for non-makeup weekend / holiday days that
+# actually have work. Combined with any employee-entered remark via '·'.
+_OVERTIME_REMARK_ZH = {
+    DayKind.REST_DAY: "休息日加班",
+    DayKind.REGULAR_LEAVE: "例假日加班",
+    DayKind.NATIONAL_HOLIDAY: "國定假日加班",
+}
+
+
+def _annotate_overtime_remark(
+    base_remark: str, day_kind: DayKind, summary: DailyAttendanceSummary
+) -> str:
+    """Prefix the 備註 with 休息日加班 / 國定假日加班 when *summary* falls on a
+    non-working day and has actual work (a punch or recorded overtime). Keeps
+    any employee-entered remark, joined with '·'."""
+    label = _OVERTIME_REMARK_ZH.get(day_kind)
+    has_work = (
+        summary.first_clock_in is not None or summary.overtime_hours is not None
+    )
+    if label is None or not has_work:
+        return base_remark
+    return f"{label}·{base_remark}" if base_remark else label
+
+
 def calculate_status(
     shift_start: datetime.time,
     shift_end: datetime.time,
@@ -93,6 +135,7 @@ def calculate_status(
     last_clock_out: datetime.datetime | None,
     grace_minutes: int = DEFAULT_GRACE_MINUTES,
     leave_type: str | None = None,
+    day_kind: DayKind | None = None,
 ) -> AttendanceStatus | None:
     """Determine the attendance status for a single day.
 
@@ -128,6 +171,11 @@ def calculate_status(
 
     if first_clock_in is None and last_clock_out is None:
         return None
+
+    # Non-working days (休息日 / 例假日 / 國定假日): no scheduled shift, so any
+    # punch is rest-day / holiday overtime work — neither late nor early-leave.
+    if day_kind in _NON_WORKING_DAY_KINDS:
+        return AttendanceStatus.NORMAL
 
     if first_clock_in is None or last_clock_out is None:
         return AttendanceStatus.ABNORMAL
@@ -166,15 +214,25 @@ async def generate_daily_summary(
     session: AsyncSession,
     emp_id: str,
     date: datetime.date,
+    day_kind: DayKind | None = None,
 ) -> DailyAttendanceSummary | None:
     """Build or upsert a daily attendance summary for one employee.
 
     Returns ``None`` if the employee has no attendance logs AND no existing
     leave_type on *date*. Preserves any pre-set leave_type/remark across recompute.
+
+    ``day_kind`` controls whether late / early-leave applies. When ``None`` it
+    falls back to a pure weekday classification (no DB/CDN access) — hot paths
+    (generate_all_summaries, bulk override, live punch) pass the
+    calendar-accurate day_kind so 補班 Saturdays and weekday holidays classify
+    correctly.
     """
     employee = await employee_repository.find_by_id(session, emp_id)
     if employee is None:
         return None
+
+    if day_kind is None:
+        day_kind = _weekday_fallback(date)
 
     # Read any existing summary's leave_type/remark so we preserve them
     existing_rows = await summary_repository.find_by_employee(
@@ -200,10 +258,18 @@ async def generate_daily_summary(
         last_clock_out,
         grace_minutes=grace_minutes,
         leave_type=existing_leave_type,
+        day_kind=day_kind,
     )
 
     if status is None:
-        return None
+        # No punches and no leave. If the row still carries an explicitly-set
+        # overtime_hours value (e.g. 休息日加班 — overtime on a rest day with no
+        # clock-in/out), preserve it instead of dropping the summary. Otherwise
+        # the value vanishes on the next read: generate_all_summaries skips the
+        # ABSENT fallback on non-workdays, so nothing re-emits the row.
+        if existing_overtime_hours is None:
+            return None
+        status = existing_rows[0].status
 
     summary = await summary_repository.upsert_summary(
         session,
@@ -285,17 +351,24 @@ async def generate_all_summaries(
         session, skip=0, limit=10000, include_terminated=True
     )
 
+    # Load the calendar once for the batch and classify the day so every
+    # per-employee summary uses the calendar-accurate day_kind (休息日 / 補班 /
+    # 國定假日) without an N+1 reload inside generate_daily_summary.
+    calendar_data = await _load_calendar_for_year(session, date.year)
+    day_kind = classify_date_kind(calendar_data, date)
+
     summaries: list[DailyAttendanceSummary] = []
     handled_emp_ids: set[str] = set()  # punched OR on leave
 
     for emp in employees:
-        summary = await generate_daily_summary(session, emp.emp_id, date)
+        summary = await generate_daily_summary(
+            session, emp.emp_id, date, day_kind=day_kind
+        )
         if summary is not None:
             summaries.append(summary)
             handled_emp_ids.add(emp.emp_id)
 
     # Determine workday status via cached Taiwan calendar (fallback Mon-Fri)
-    calendar_data = await _load_calendar_for_year(session, date.year)
     if not is_workday_from_data(calendar_data, date):
         return summaries
 
@@ -436,8 +509,8 @@ async def export_attendance(
     submission values. JSON output preserves English keys and raw enum values.
 
     Columns (CSV/Excel):
-        員工編號, 姓名, 部門, 日期, 班別時間, 上班時間, 下班時間,
-        狀態, 備註, 遲到理由, 送單狀態
+        員工編號, 姓名, 部門, 日期, 星期, 班別時間, 上班時間, 下班時間,
+        狀態, 備註, 加班時數, 遲到理由, 送單狀態
 
     Parameters
     ----------
@@ -522,16 +595,30 @@ async def export_attendance(
             )
         return e in sub_cache[key]
 
+    # --- preload the Taiwan calendar for every year in range so both real
+    #     rows (休息日 / 國定假日 overtime annotation in 備註) and the filler
+    #     rows below can classify each date's DayKind.
+    years_in_range: set[int] = set()
+    _cursor = start_date
+    while _cursor <= end_date:
+        years_in_range.add(_cursor.year)
+        _cursor += timedelta(days=1)
+    calendars: dict[int, list[DayInfo]] = {
+        y: await _load_calendar_for_year(session, y) for y in years_in_range
+    }
+
     # --- build English-keyed rows (JSON path uses these directly) ---
     rows: list[dict[str, str]] = []
     for s in all_summaries:
         emp = emp_map.get(s.emp_id)
         sub = await _is_submitted(s.emp_id, s.date)
+        day_kind = classify_date_kind(calendars.get(s.date.year, []), s.date)
         rows.append({
             "emp_id": s.emp_id,
             "name": emp.name if emp else "",
             "department": emp.department if emp else "",
             "date": s.date.isoformat(),
+            "weekday": _weekday_zh(s.date),
             "shift_time": (
                 _format_shift_time(emp.shift_start_time, emp.shift_end_time)
                 if emp
@@ -544,7 +631,9 @@ async def export_attendance(
                 s.last_clock_out.isoformat() if s.last_clock_out else ""
             ),
             "status": s.status.value,
-            "remark": _format_remark(s.leave_type, s.remark),
+            "remark": _annotate_overtime_remark(
+                _format_remark(s.leave_type, s.remark), day_kind, s
+            ),
             "overtime_hours": _format_overtime_hours(s.overtime_hours),
             "reason": reason_map.get(s.id or -1, ""),
             "submission_status": "submitted" if sub else "unsubmitted",
@@ -567,15 +656,6 @@ async def export_attendance(
     # and the same submission_filter (we skip filler rows for an employee
     # whose month doesn't satisfy the filter).
     if emp_map:
-        years_in_range: set[int] = set()
-        cursor = start_date
-        while cursor <= end_date:
-            years_in_range.add(cursor.year)
-            cursor += timedelta(days=1)
-        calendars: dict[int, list[DayInfo]] = {
-            y: await _load_calendar_for_year(session, y) for y in years_in_range
-        }
-
         existing_pairs: set[tuple[str, datetime.date]] = {
             (r["emp_id"], datetime.date.fromisoformat(r["date"])) for r in rows
         }
@@ -627,6 +707,7 @@ async def export_attendance(
                     "name": emp.name,
                     "department": emp.department,
                     "date": cursor.isoformat(),
+                    "weekday": _weekday_zh(cursor),
                     "shift_time": _format_shift_time(
                         emp.shift_start_time, emp.shift_end_time
                     ),
@@ -655,6 +736,7 @@ async def export_attendance(
             row["name"],
             row["department"],
             row["date"],
+            row["weekday"],
             row["shift_time"],
             row["first_clock_in"],
             row["last_clock_out"],

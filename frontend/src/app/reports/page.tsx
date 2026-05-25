@@ -50,6 +50,18 @@ function formatTime(iso: string | null): string | null {
   });
 }
 
+/**
+ * First-In-Last-Out collapses a single physical punch to first === last. The
+ * echoed clock-out isn't a real clock-out ("clocked in, never clocked out"),
+ * so it should display as "no record" rather than the same time twice.
+ */
+function isSinglePunch(
+  firstClockIn: string | null,
+  lastClockOut: string | null,
+): boolean {
+  return firstClockIn != null && firstClockIn === lastClockOut;
+}
+
 // ---------------------------------------------------------------------------
 // Status Badge
 // ---------------------------------------------------------------------------
@@ -309,7 +321,11 @@ function DailyReportSection({ isHr }: { readonly isHr: boolean }) {
                   <td className="px-4 py-3 font-mono text-xs text-gray-700">{row.emp_id}</td>
                   <td className="px-4 py-3 text-gray-700">{row.date}</td>
                   <td className="px-4 py-3 text-gray-700">{formatTime(row.first_clock_in) ?? t("reports.noRecord")}</td>
-                  <td className="px-4 py-3 text-gray-700">{formatTime(row.last_clock_out) ?? t("reports.noRecord")}</td>
+                  <td className="px-4 py-3 text-gray-700">
+                    {isSinglePunch(row.first_clock_in, row.last_clock_out)
+                      ? t("reports.noRecord")
+                      : (formatTime(row.last_clock_out) ?? t("reports.noRecord"))}
+                  </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={row.status} label={statusLabelMap[row.status] ?? row.status} />
                   </td>

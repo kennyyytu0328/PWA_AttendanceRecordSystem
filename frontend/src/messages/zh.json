@@ -322,7 +322,10 @@
     "warningTitle": "偵測到 {count} 個異常日",
     "warningBody": "下列日期狀態異常，仍要繼續送出嗎？",
     "backToEdit": "返回修改",
-    "proceed": "繼續送出"
+    "proceed": "繼續送出",
+    "overtimePunchTitle": "有 {count} 天加班缺少打卡時間",
+    "overtimePunchBody": "加班一定有實際工作，必須同時填寫上班與下班打卡時間。請補上下列日期的打卡時間後再儲存：",
+    "overtimePunchHint": "加班需填上下班打卡時間"
   },
   "calendarStatus": {
     "title": "工作日行事曆狀態",
