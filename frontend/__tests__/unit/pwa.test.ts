@@ -1,21 +1,21 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
-import * as fs from "fs";
-import * as path from "path";
+import manifest from "@/app/manifest";
 
 describe("PWA Configuration", () => {
-  describe("manifest.json", () => {
+  // The manifest is a dynamic Next.js route (src/app/manifest.ts), not a
+  // static public/manifest.json. It is basePath-aware; with
+  // NEXT_PUBLIC_BASE_PATH unset (test/dev default) the prefix is "".
+  describe("manifest", () => {
     it("has required PWA fields", () => {
-      const manifestPath = path.resolve(__dirname, "../../public/manifest.json");
-      const manifestRaw = fs.readFileSync(manifestPath, "utf-8");
-      const manifest = JSON.parse(manifestRaw);
+      const m = manifest();
 
-      expect(manifest.name).toBe("GoGoFresh Attendance");
-      expect(manifest.short_name).toBe("Attendance");
-      expect(manifest.start_url).toBe("/");
-      expect(manifest.display).toBe("standalone");
-      expect(manifest.background_color).toBe("#ffffff");
-      expect(manifest.theme_color).toBe("#10b981");
-      expect(manifest.icons).toEqual(
+      expect(m.name).toBe("GoGoFresh Attendance");
+      expect(m.short_name).toBe("Attendance");
+      expect(m.start_url).toBe("/");
+      expect(m.display).toBe("standalone");
+      expect(m.background_color).toBe("#ffffff");
+      expect(m.theme_color).toBe("#10b981");
+      expect(m.icons).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             src: "/icons/icon-192.png",
