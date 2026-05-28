@@ -698,7 +698,7 @@ export default function MonthlyOverridePage() {
 
           {/* Department & Employee Selector (HR+ only) */}
           {isHrPlus && (
-            <div className="flex items-center gap-4">
+            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:gap-4">
               <div className="flex items-center gap-2">
                 <label
                   htmlFor="dept-selector"
@@ -710,7 +710,7 @@ export default function MonthlyOverridePage() {
                   id="dept-selector"
                   value={selectedDepartment}
                   onChange={(e) => handleDepartmentChange(e.target.value)}
-                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-2 focus:ring-[#4ec6c1] focus:outline-none"
+                  className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-2 focus:ring-[#4ec6c1] focus:outline-none sm:flex-none"
                 >
                   <option value="">{t("monthlyOverride.allDepartments")}</option>
                   {departments.map((dept) => (
@@ -731,7 +731,7 @@ export default function MonthlyOverridePage() {
                   id="emp-selector"
                   value={selectedEmpId}
                   onChange={(e) => setSelectedEmpId(e.target.value)}
-                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-2 focus:ring-[#4ec6c1] focus:outline-none"
+                  className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-2 focus:ring-[#4ec6c1] focus:outline-none sm:flex-none"
                 >
                   <option value="">--</option>
                   {filteredEmployees.map((emp) => (
