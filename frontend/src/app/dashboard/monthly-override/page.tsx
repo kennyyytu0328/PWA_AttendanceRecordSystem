@@ -575,6 +575,12 @@ export default function MonthlyOverridePage() {
         body,
       );
 
+      // Re-fetch so the Status column reflects the backend-recalculated
+      // statuses (NORMAL/LATE/… plus weekend self-healing). fetchData rebuilds
+      // both rows and originalRows from fresh summaries, so it also resets the
+      // "changed" baseline. It clears `message` on entry, hence we set the
+      // success message afterwards.
+      await fetchData();
       setMessage({
         type: "success",
         text: t("monthlyOverride.saveSuccess").replace(
@@ -582,13 +588,12 @@ export default function MonthlyOverridePage() {
           String(result.updated_count),
         ),
       });
-      setOriginalRows([...rows]);
     } catch {
       setMessage({ type: "error", text: t("monthlyOverride.saveError") });
     } finally {
       setIsSaving(false);
     }
-  }, [rows, originalRows, year, month, isHrPlus, selectedEmpId, t]);
+  }, [rows, originalRows, year, month, isHrPlus, selectedEmpId, t, fetchData]);
 
   // Build the list of abnormal days for the warning modal
   const abnormalDays: readonly AbnormalDay[] = rows
