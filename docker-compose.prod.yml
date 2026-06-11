@@ -1,13 +1,15 @@
 # =============================================================================
 # GoGoFresh Attendance — Production Docker Compose Template
 # =============================================================================
-# This template assumes you are using an EXISTING PostgreSQL server on the
-# Docker host (e.g., a shared Postgres serving multiple apps on the same VM).
-# The backend container reaches it via `host.docker.internal`.
+# This template runs the FULL stack in containers, including PostgreSQL
+# (the `db` service below). This is the production default: it works on any
+# host with Docker, even old OS releases (e.g. Ubuntu 18.04) whose apt repos
+# only carry PostgreSQL 10 — far below the required 14+.
 #
-# If you would rather run a bundled Postgres container (single-tenant box,
-# fully self-contained), see the commented-out `db:` service at the bottom of
-# this file and the notes in docs/PRODUCTION_DEPLOYMENT_GUIDE.md.
+# If you instead want to reuse an EXISTING PostgreSQL 14+ running on the
+# Docker host (shared with other apps on the same VM), see the
+# "host Postgres alternative" comment block at the bottom of this file and
+# the notes in docs/PRODUCTION_DEPLOYMENT_GUIDE.md.
 #
 # Differences from docker-compose.yml (dev):
 #   - No bind mounts (images are self-contained, immutable)
@@ -19,11 +21,30 @@
 # Usage:
 #   cp backend/.env.production.example backend/.env
 #   cp frontend/.env.production.example frontend/.env.production
-#   # fill in real values in both .env files
+#   # fill in real values in both .env files AND the root .env
+#   # (POSTGRES_PASSWORD here must match the password inside DATABASE_URL)
 #   docker compose -f docker-compose.prod.yml up -d --build
 # =============================================================================
 
 services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-attendance_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-attendance}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # No `ports:` on purpose — the database is reachable only from the other
+    # services on the compose network (the backend connects to host `db`).
+    # Never publish 5432 on a production host.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-attendance_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ./backend
@@ -31,11 +52,9 @@ services:
     restart: unless-stopped
     env_file:
       - ./backend/.env
-    # Map host.docker.internal to the host's gateway IP so the backend can
-    # reach a Postgres running on the host (outside Docker). DATABASE_URL in
-    # backend/.env should use `host.docker.internal:5432` as the host:port.
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
     # Production: no --reload, use multiple workers for concurrency.
     # Tune --workers to ~ (2 * CPU cores) + 1.
     # --proxy-headers + --forwarded-allow-ips=* lets FastAPI trust
@@ -45,8 +64,8 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --proxy-headers --forwarded-allow-ips=*
     # Published on the loopback interface only — the host nginx (which holds
     # the public /gogoffcc-arms/ location blocks) proxies to 127.0.0.1:8120.
-    # Host port 8120 is chosen to avoid a collision with another app already
-    # using 8000 on the production VM. Container port stays 8000 (uvicorn).
+    # Host port 8120 is chosen to avoid a collision with other apps commonly
+    # squatting on 8000. Container port stays 8000 (uvicorn).
     ports:
       - "127.0.0.1:8120:8000"
 
@@ -66,33 +85,26 @@ services:
     depends_on:
       - backend
     # Published on the loopback interface only — host nginx proxies to
-    # 127.0.0.1:3000 for /gogoffcc-arms/ (preserving the basePath prefix).
+    # 127.0.0.1:3000 for /gogoffcc-arms/.
     ports:
       - "127.0.0.1:3000:3000"
 
+volumes:
+  pgdata:
+    driver: local
+
 # -----------------------------------------------------------------------------
-# Optional: bundled Postgres (uncomment to run a Postgres container instead
-# of using a host Postgres). If you uncomment this, also:
-#   - Add `depends_on: db: { condition: service_healthy }` under `backend:`
-#   - Remove the `extra_hosts:` block under `backend:` (not needed)
-#   - In backend/.env, set DATABASE_URL host to `db` (the service name)
-#   - Add a `volumes:` section at the bottom of this file with `pgdata:`
+# Alternative: reuse a host Postgres (14+) instead of the bundled `db` service.
+# Used by the original alg-compute-0 deployment, where one host Postgres is
+# shared by several apps. To switch:
+#   - Delete (or comment out) the `db:` service and the `volumes:` section
+#   - Remove `depends_on:` under `backend:` and add instead:
+#       extra_hosts:
+#         - "host.docker.internal:host-gateway"
+#   - In backend/.env, point DATABASE_URL at host.docker.internal:5432
+#   - Provision the role + database on the host Postgres yourself, and allow
+#     the Docker bridge subnet in pg_hba.conf:
+#       host attendance attendance_user 172.16.0.0/12 scram-sha-256
+#     plus listen_addresses = 'localhost,172.17.0.1' in postgresql.conf
+#   - POSTGRES_* variables in the root .env are then no longer needed
 # -----------------------------------------------------------------------------
-#   db:
-#     image: postgres:16-alpine
-#     restart: unless-stopped
-#     environment:
-#       POSTGRES_USER: ${POSTGRES_USER:-attendance_user}
-#       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-#       POSTGRES_DB: ${POSTGRES_DB:-attendance}
-#     volumes:
-#       - pgdata:/var/lib/postgresql/data
-#     healthcheck:
-#       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-attendance_user}"]
-#       interval: 10s
-#       timeout: 5s
-#       retries: 5
-#
-# volumes:
-#   pgdata:
-#     driver: local
