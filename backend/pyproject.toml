@@ -11,7 +11,10 @@ dependencies = [
     "asyncpg>=0.30.0",
     "alembic>=1.14.0",
     "webauthn>=2.0.0",
-    "passlib[bcrypt]>=1.7.4",
+    "passlib>=1.7.4",
+    # passlib 1.7.4 (unmaintained) breaks with bcrypt >= 4.1: __about__ removed
+    # and >72-byte self-test password now raises ValueError instead of truncating.
+    "bcrypt>=4.0.1,<4.1",
     "python-jose[cryptography]>=3.3.0",
     "pydantic-settings>=2.0.0",
     "python-multipart>=0.0.18",
