@@ -61,6 +61,53 @@ def test_employee_create_schema_missing_fields():
         )
 
 
+# ---------- 3b. Employee schemas round-trip reports_to + rank (Phase 15B) ----------
+def test_employee_create_schema_reports_to_and_rank():
+    from app.schemas.employee import EmployeeCreate
+
+    data = EmployeeCreate(
+        emp_id="MGR001",
+        name="Manny Manager",
+        department="Sales",
+        role="MANAGER",
+        password="secureP@ss1",
+        shift_start_time=datetime.time(9, 0),
+        shift_end_time=datetime.time(18, 0),
+        reports_to="VP001",
+        rank="MANAGER",
+    )
+    assert data.reports_to == "VP001"
+    assert data.rank == "MANAGER"
+
+
+def test_employee_create_schema_reports_to_and_rank_optional():
+    """reports_to + rank are optional — a new hire may have neither yet."""
+    from app.schemas.employee import EmployeeCreate
+
+    data = EmployeeCreate(
+        emp_id="EMP001",
+        name="Alice Wang",
+        department="Engineering",
+        role="EMPLOYEE",
+        password="secureP@ss1",
+        shift_start_time=datetime.time(9, 0),
+        shift_end_time=datetime.time(18, 0),
+    )
+    assert data.reports_to is None
+    assert data.rank is None
+
+
+def test_employee_response_and_update_carry_reports_to_and_rank():
+    from app.schemas.employee import EmployeeResponse, EmployeeUpdate
+
+    assert "reports_to" in EmployeeResponse.model_fields
+    assert "rank" in EmployeeResponse.model_fields
+
+    upd = EmployeeUpdate(reports_to="VP001", rank="AVP")
+    assert upd.reports_to == "VP001"
+    assert upd.rank == "AVP"
+
+
 # ---------- 4. PunchRequest valid input ----------
 def test_attendance_log_schema_valid():
     from app.schemas.attendance import PunchRequest

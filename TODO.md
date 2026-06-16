@@ -505,11 +505,11 @@ On inspection the **frontend was already safe** and the **UPDATE path was alread
 - [x] `backend/tests/integration/test_employee_api.py` — HR creating ADMIN → 403 (+ not persisted); ADMIN creating ADMIN → 201; HR creating HR → 201.
 - [x] `backend/tests/unit/test_employee_service.py` — service-level: HR→ADMIN raises `PermissionError` (nothing persisted); ADMIN→ADMIN succeeds. Updated 3 existing callers to the new signature.
 
-### 15B: Data model + migration -- TODO
-- [ ] `backend/app/models/employee.py` — add `reports_to: str | None` (FK→`employees.emp_id`, indexed) and `rank: str | None`.
-- [ ] Alembic migration — add both nullable columns + FK + index. No backfill (existing rows valid; `reports_to=NULL` = flat tree). PG: self-referential FK on `employees`.
-- [ ] `backend/app/schemas/employee.py` — create/update schemas round-trip `reports_to` + `rank`.
-- [ ] `backend/tests/unit/test_models.py` / `test_schemas.py` — column presence + schema round-trip.
+### 15B: Data model + migration -- DONE (393 backend tests green)
+- [x] `backend/app/models/employee.py` — added `reports_to: str | None` (self-FK→`employees.emp_id`, `ondelete="SET NULL"`, indexed) and `rank: str | None` (display label, no permissions).
+- [x] Alembic migration `b8c9d0e1f2a3_add_reports_to_and_rank_to_employees.py` — chains off head `a7b8c9d0e1f2`; adds both nullable columns + index + self-FK. No backfill (`reports_to=NULL` = flat tree, behaves like today). Verified single linear head + valid offline Postgres DDL (`alembic upgrade … --sql`).
+- [x] `backend/app/schemas/employee.py` — `EmployeeCreate` / `EmployeeResponse` / `EmployeeUpdate` round-trip `reports_to` + `rank` (both optional).
+- [x] `backend/tests/unit/test_models.py` — persistence + self-reference + NULL defaults. `test_schemas.py` — round-trip + optional + response/update field presence.
 
 ### 15C: Ranks config + scoping toggle -- TODO
 - [ ] `backend/app/routers/` — new `GET/PUT /api/admin/ranks` mirroring `leave_types.py` (GET any auth, PUT HR+). Stores ordered list in `system_config` key `ranks` (default `["PRESIDENT","VP","AVP","MANAGER"]`).

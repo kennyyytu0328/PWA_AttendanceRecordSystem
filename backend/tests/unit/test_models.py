@@ -37,6 +37,53 @@ async def test_employee_model_fields(db_session):
     assert row.shift_end_time == datetime.time(18, 0)
 
 
+# ---------- 1b. Employee reporting tree + rank (Phase 15B) ----------
+async def test_employee_reports_to_and_rank(db_session):
+    """Employee carries an optional self-referential reports_to + rank label."""
+    from app.models.employee import Employee, Role
+
+    boss = Employee(
+        emp_id="VP001",
+        name="Vera President",
+        department="Sales",
+        role=Role.MANAGER,
+        rank="VP",
+        hashed_password="hpw",
+        shift_start_time=datetime.time(9, 0),
+        shift_end_time=datetime.time(18, 0),
+    )
+    db_session.add(boss)
+    await db_session.commit()
+
+    report = Employee(
+        emp_id="MGR001",
+        name="Manny Manager",
+        department="Sales",
+        role=Role.MANAGER,
+        rank="MANAGER",
+        reports_to="VP001",
+        hashed_password="hpw",
+        shift_start_time=datetime.time(9, 0),
+        shift_end_time=datetime.time(18, 0),
+    )
+    db_session.add(report)
+    await db_session.commit()
+
+    result = await db_session.execute(
+        select(Employee).where(Employee.emp_id == "MGR001")
+    )
+    row = result.scalars().one()
+    assert row.reports_to == "VP001"
+    assert row.rank == "MANAGER"
+
+    # Defaults: an employee with no manager / rank assigned stays NULL.
+    result2 = await db_session.execute(
+        select(Employee).where(Employee.emp_id == "VP001")
+    )
+    top = result2.scalars().one()
+    assert top.reports_to is None
+
+
 # ---------- 2. Employee role enum ----------
 async def test_employee_role_enum(db_session):
     from app.models.employee import Role

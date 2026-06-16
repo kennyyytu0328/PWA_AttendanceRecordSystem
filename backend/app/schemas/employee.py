@@ -18,6 +18,8 @@ class EmployeeCreate(BaseModel):
     password: str = Field(..., min_length=1)
     shift_start_time: datetime.time
     shift_end_time: datetime.time
+    reports_to: Optional[str] = Field(default=None, min_length=1)
+    rank: Optional[str] = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def validate_shift_times(self):
@@ -40,6 +42,8 @@ class EmployeeResponse(BaseModel):
     shift_start_time: datetime.time
     shift_end_time: datetime.time
     terminated_at: Optional[datetime.datetime] = None
+    reports_to: Optional[str] = None
+    rank: Optional[str] = None
 
 
 class EmployeeUpdate(BaseModel):
@@ -51,6 +55,8 @@ class EmployeeUpdate(BaseModel):
     password: Optional[str] = Field(default=None, min_length=1)
     shift_start_time: Optional[datetime.time] = None
     shift_end_time: Optional[datetime.time] = None
+    reports_to: Optional[str] = Field(default=None, min_length=1)
+    rank: Optional[str] = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def validate_shift_times(self):

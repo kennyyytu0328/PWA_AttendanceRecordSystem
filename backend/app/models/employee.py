@@ -27,6 +27,24 @@ class Employee(SQLModel, table=True):
     role: Role = Field(sa_column=sa.Column(sa.Enum(Role), nullable=False))
     hashed_password: str
 
+    # Reporting tree (Phase 15B): self-referential FK to the employee's manager.
+    # Authority is computed from this edge (a manager's subtree), NOT from the
+    # department label. NULL = top of the org chart (e.g. President). ON DELETE
+    # SET NULL so hard-deleting a manager orphans reports rather than blocking.
+    reports_to: str | None = Field(
+        default=None,
+        sa_column=sa.Column(
+            sa.String,
+            sa.ForeignKey("employees.emp_id", ondelete="SET NULL"),
+            nullable=True,
+            index=True,
+        ),
+    )
+
+    # Org-chart rank label (e.g. MANAGER / AVP / VP / PRESIDENT). Display only —
+    # grants no permissions. Values come from the configurable `ranks` list.
+    rank: str | None = Field(default=None)
+
     shift_start_time: datetime.time = Field(
         sa_column=sa.Column(sa.Time, nullable=False)
     )
