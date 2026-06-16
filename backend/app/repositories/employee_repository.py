@@ -162,6 +162,33 @@ async def reactivate_employee(
     return employee
 
 
+async def get_subtree_emp_ids(
+    session: AsyncSession, root_emp_id: str
+) -> set[str]:
+    """Return the emp_ids in *root_emp_id*'s reporting subtree (root inclusive).
+
+    Walks the ``reports_to`` edges downward via a recursive CTE: the root, plus
+    everyone who reports to it directly or transitively. Used to scope a
+    manager's authority to their own org branch.
+
+    Uses UNION (not UNION ALL) so a malformed cycle (A reports_to B,
+    B reports_to A) still terminates — duplicate rows are not re-queued.
+    Portable across SQLite (tests) and PostgreSQL (prod).
+    """
+    # Anchor: the root row itself.
+    base = (
+        select(Employee.emp_id)
+        .where(Employee.emp_id == root_emp_id)
+        .cte(name="subtree", recursive=True)
+    )
+    # Recursive step: direct reports of anyone already in the CTE.
+    base = base.union(
+        select(Employee.emp_id).where(Employee.reports_to == base.c.emp_id)
+    )
+    result = await session.execute(select(base.c.emp_id))
+    return set(result.scalars().all())
+
+
 async def find_by_manager_department(
     session: AsyncSession,
     department: str,

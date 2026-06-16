@@ -141,6 +141,90 @@ async def test_admin_can_create_admin_service(
     assert response.role == Role.ADMIN
 
 
+# ---- 3c. reports_to write guard: self-reference and cycles (Phase 15D) ----
+
+
+async def _seed(db_session, emp_id, reports_to=None, role=Role.EMPLOYEE):
+    from app.models.employee import Employee
+
+    e = Employee(
+        emp_id=emp_id,
+        name=emp_id,
+        department="Sales",
+        role=role,
+        reports_to=reports_to,
+        hashed_password=hash_password("pw"),
+        shift_start_time=datetime.time(9, 0),
+        shift_end_time=datetime.time(18, 0),
+    )
+    db_session.add(e)
+    await db_session.commit()
+    return e
+
+
+async def test_update_reports_to_self_rejected(db_session: AsyncSession) -> None:
+    from app.services.employee_service import InvalidReportsToError
+
+    await _seed(db_session, "MGR1", role=Role.MANAGER)
+    with pytest.raises(InvalidReportsToError, match="themselves"):
+        await svc_update_employee(
+            db_session,
+            "MGR1",
+            EmployeeUpdate(reports_to="MGR1"),
+            Role.HR,
+        )
+
+
+async def test_update_reports_to_descendant_rejected(
+    db_session: AsyncSession,
+) -> None:
+    """Pointing a boss at someone in their own subtree would create a cycle."""
+    from app.services.employee_service import InvalidReportsToError
+
+    await _seed(db_session, "VP1", role=Role.MANAGER)
+    await _seed(db_session, "MGR1", reports_to="VP1", role=Role.MANAGER)
+    await _seed(db_session, "EMP1", reports_to="MGR1", role=Role.EMPLOYEE)
+
+    with pytest.raises(InvalidReportsToError, match="cycle"):
+        await svc_update_employee(
+            db_session,
+            "VP1",
+            EmployeeUpdate(reports_to="EMP1"),
+            Role.HR,
+        )
+
+
+async def test_update_reports_to_unknown_manager_rejected(
+    db_session: AsyncSession,
+) -> None:
+    from app.services.employee_service import InvalidReportsToError
+
+    await _seed(db_session, "EMP1", role=Role.EMPLOYEE)
+    with pytest.raises(InvalidReportsToError, match="not found"):
+        await svc_update_employee(
+            db_session,
+            "EMP1",
+            EmployeeUpdate(reports_to="GHOST"),
+            Role.HR,
+        )
+
+
+async def test_update_reports_to_valid_upper_node_ok(
+    db_session: AsyncSession,
+) -> None:
+    await _seed(db_session, "VP1", role=Role.MANAGER)
+    await _seed(db_session, "MGR1", reports_to="VP1", role=Role.MANAGER)
+    await _seed(db_session, "EMP1", role=Role.EMPLOYEE)
+
+    resp = await svc_update_employee(
+        db_session,
+        "EMP1",
+        EmployeeUpdate(reports_to="MGR1"),
+        Role.HR,
+    )
+    assert resp.reports_to == "MGR1"
+
+
 # ---- 4. authenticate valid credentials ----
 
 

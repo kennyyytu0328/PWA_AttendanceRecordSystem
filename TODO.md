@@ -517,11 +517,11 @@ On inspection the **frontend was already safe** and the **UPDATE path was alread
 - [x] `backend/app/routers/org_hierarchy.py` — `GET/PUT /api/admin/ranks` (GET any auth, PUT HR+) and `GET/PUT /api/admin/org-scoping` (GET any auth, **PUT HR+** — HR owns the rollout: populate the tree, then flip the switch). Both registered in `main.py`.
 - [x] `backend/tests/integration/test_org_config_api.py` (6) + `backend/tests/unit/test_system_config_ranks.py` (4) — defaults, role gates, round-trip.
 
-### 15D: Authority engine -- TODO (unit-tested BEFORE wiring endpoints)
-- [ ] `backend/app/repositories/employee_repository.py::get_subtree_emp_ids(session, root_emp_id) -> set[str]` — `WITH RECURSIVE` over `reports_to`, root inclusive, `UNION` (not `UNION ALL`) so a malformed cycle still terminates.
-- [ ] Cycle/self-reference guard on write: `employee_service` rejects setting `reports_to` to self or to anyone inside the editee's subtree → 400.
-- [ ] `backend/app/middleware/scope.py::resolve_scope(user, session) -> Scope` — HR/ADMIN = company-wide; MANAGER = own subtree; EMPLOYEE = {self}. Resolved from DB (JWT carries only `sub`+`role`, so no token change / no forced re-login). Honors `org_scoping_enabled` (off ⇒ company-wide for everyone, preserving current behavior).
-- [ ] `backend/tests/unit/test_subtree.py` + `test_scope.py` — subtree correctness, cycle rejection, per-role scope, toggle off = company-wide.
+### 15D: Authority engine -- DONE (unit-tested before wiring endpoints)
+- [x] `employee_repository.get_subtree_emp_ids(session, root_emp_id) -> set[str]` — recursive CTE over `reports_to`, root inclusive, `UNION` (not `UNION ALL`) so a malformed cycle still terminates. Portable SQLite/Postgres.
+- [x] Write guard: `employee_service.InvalidReportsToError` (→ 400). `update_employee` rejects `reports_to` = self, an unknown manager, or anyone inside the editee's subtree (cycle); `create_employee` rejects self + unknown manager (no subtree yet). Router maps `InvalidReportsToError`→400 (before the generic ValueError).
+- [x] `backend/app/middleware/scope.py` — `Scope` (frozen dataclass, `.can_see(emp_id)`) + `resolve_scope(user, session)`. HR/ADMIN = company-wide; MANAGER = own subtree; EMPLOYEE = {self}. Resolved from DB (no token change). Honors `org_scoping_enabled` (OFF ⇒ company-wide for everyone).
+- [x] `test_subtree.py` (5: full tree, mid-branch, leaf, sibling-exclusion, cycle-termination), `test_scope.py` (4: HR/ADMIN company-wide, manager subtree when on, manager company-wide when off, employee self), service write-guard tests (4) + integration 400 mapping (1).
 
 ### 15E: Endpoint enforcement -- TODO (TDD each: in-subtree pass / out-of-subtree 403 or filtered)
 - [ ] `backend/app/routers/reports.py:64` — `GET /reports/daily`: filter to subtree emp_ids.

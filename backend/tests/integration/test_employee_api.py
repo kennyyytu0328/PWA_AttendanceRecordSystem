@@ -330,6 +330,21 @@ class TestUpdateEmployee:
 
         assert resp.status_code == 403
 
+    async def test_reports_to_self_returns_400(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """A self-referential reports_to is a bad request (Phase 15D guard)."""
+        await _seed_employee(db_session, emp_id="HR001", role=Role.HR)
+        await _seed_employee(db_session, emp_id="MGR1", role=Role.MANAGER)
+        token = _make_token("HR001", Role.HR)
+
+        resp = await client.put(
+            "/api/employees/MGR1",
+            json={"reports_to": "MGR1"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 400
+
 
 # ---------------------------------------------------------------------------
 # DELETE /api/employees/{emp_id} — Deactivate employee

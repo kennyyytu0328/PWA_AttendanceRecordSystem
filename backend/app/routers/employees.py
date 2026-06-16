@@ -36,6 +36,11 @@ async def create_employee(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(exc),
         )
+    except employee_service.InvalidReportsToError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -120,6 +125,11 @@ async def update_employee(
     except PermissionError as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        )
+    except employee_service.InvalidReportsToError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         )
     except ValueError as exc:
