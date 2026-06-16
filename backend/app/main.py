@@ -8,6 +8,7 @@ from app.routers import (
     employees,
     leave_types,
     monthly_submissions,
+    org_hierarchy,
     reasons,
     reports,
     system_config,
@@ -57,6 +58,8 @@ app.include_router(auth.router)
 app.include_router(employees.router)
 app.include_router(leave_types.router)
 app.include_router(monthly_submissions.router)
+app.include_router(org_hierarchy.ranks_router)
+app.include_router(org_hierarchy.scoping_router)
 app.include_router(reasons.router)
 app.include_router(reports.router)
 app.include_router(system_config.router)

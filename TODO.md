@@ -511,10 +511,11 @@ On inspection the **frontend was already safe** and the **UPDATE path was alread
 - [x] `backend/app/schemas/employee.py` — `EmployeeCreate` / `EmployeeResponse` / `EmployeeUpdate` round-trip `reports_to` + `rank` (both optional).
 - [x] `backend/tests/unit/test_models.py` — persistence + self-reference + NULL defaults. `test_schemas.py` — round-trip + optional + response/update field presence.
 
-### 15C: Ranks config + scoping toggle -- TODO
-- [ ] `backend/app/routers/` — new `GET/PUT /api/admin/ranks` mirroring `leave_types.py` (GET any auth, PUT HR+). Stores ordered list in `system_config` key `ranks` (default `["PRESIDENT","VP","AVP","MANAGER"]`).
-- [ ] `org_scoping_enabled` flag in `system_config` (default `false`) + read helper.
-- [ ] `backend/tests/integration/` — ranks GET/PUT + role gate; toggle read/write.
+### 15C: Ranks config + scoping toggle -- DONE (403 backend tests green)
+- [x] `system_config_repository` — `get_ranks`/`set_ranks` (key `ranks`, value `{"ranks":[…]}`, default `["PRESIDENT","VP","AVP","MANAGER"]`) and `get_org_scoping_enabled`/`set_org_scoping_enabled` (key `org_scoping_enabled`, value `{"enabled":bool}`, default `False`).
+- [x] `backend/app/schemas/org_hierarchy.py` — Ranks + OrgScoping request/response schemas.
+- [x] `backend/app/routers/org_hierarchy.py` — `GET/PUT /api/admin/ranks` (GET any auth, PUT HR+) and `GET/PUT /api/admin/org-scoping` (GET any auth, **PUT ADMIN-only** — flipping it off restores company-wide visibility, so it's a system-level switch). Both registered in `main.py`.
+- [x] `backend/tests/integration/test_org_config_api.py` (6) + `backend/tests/unit/test_system_config_ranks.py` (4) — defaults, role gates, round-trip.
 
 ### 15D: Authority engine -- TODO (unit-tested BEFORE wiring endpoints)
 - [ ] `backend/app/repositories/employee_repository.py::get_subtree_emp_ids(session, root_emp_id) -> set[str]` — `WITH RECURSIVE` over `reports_to`, root inclusive, `UNION` (not `UNION ALL`) so a malformed cycle still terminates.

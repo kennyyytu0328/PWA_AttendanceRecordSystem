@@ -61,6 +61,70 @@ async def set_leave_types(
     return list(types)
 
 
+_DEFAULT_RANKS: list[str] = ["PRESIDENT", "VP", "AVP", "MANAGER"]
+
+
+async def get_ranks(session: AsyncSession) -> list[str]:
+    """Return the configured org-chart ranks (most-senior first).
+
+    Unlike departments/leave_types (which default to empty), ranks default to
+    the standard 4-tier ladder so the org scaffolding works out of the box.
+    """
+    config = await get_by_key(session, "ranks")
+    if config is None:
+        return list(_DEFAULT_RANKS)
+    value = config.value
+    if isinstance(value, dict) and "ranks" in value:
+        return list(value["ranks"])
+    return list(_DEFAULT_RANKS)
+
+
+async def set_ranks(
+    session: AsyncSession,
+    ranks: list[str],
+    updated_by: str | None = None,
+) -> list[str]:
+    """Upsert the ranks config entry. Returns the stored list."""
+    await set_config(
+        session,
+        key="ranks",
+        value={"ranks": list(ranks)},
+        updated_by=updated_by,
+    )
+    return list(ranks)
+
+
+async def get_org_scoping_enabled(session: AsyncSession) -> bool:
+    """Whether subtree-scoped manager authority is active.
+
+    Defaults to False (current company-wide behavior) so populating an empty
+    reporting tree never makes managers see nobody. ADMIN flips it on once the
+    tree is in place (Phase 15D/15E consume this flag).
+    """
+    config = await get_by_key(session, "org_scoping_enabled")
+    if config is None:
+        return False
+    value = config.value
+    if isinstance(value, dict) and "enabled" in value:
+        return bool(value["enabled"])
+    return False
+
+
+async def set_org_scoping_enabled(
+    session: AsyncSession,
+    enabled: bool,
+    updated_by: str | None = None,
+) -> bool:
+    """Upsert the org_scoping_enabled flag. Returns the stored value."""
+    await set_config(
+        session,
+        key="org_scoping_enabled",
+        value={"enabled": bool(enabled)},
+        updated_by=updated_by,
+    )
+    return bool(enabled)
+
+
 async def get_grace_period(session: AsyncSession) -> int:
     """Return the grace period in minutes from system config, defaulting to 5."""
     config = await get_by_key(session, "grace_period")
