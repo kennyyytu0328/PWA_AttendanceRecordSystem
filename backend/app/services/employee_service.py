@@ -15,15 +15,25 @@ from app.utils.password import hash_password, verify_password
 
 
 async def create_employee(
-    session: AsyncSession, data: EmployeeCreate
+    session: AsyncSession, data: EmployeeCreate, current_role: Role
 ) -> EmployeeResponse:
     """Create a new employee, hashing the password before persistence.
 
     Raises
     ------
+    PermissionError
+        If the caller lacks MANAGE_ROLES (i.e. is not ADMIN) but is trying to
+        create an ADMIN account. Prevents privilege escalation via a crafted
+        API call that bypasses the admin UI (which hides the ADMIN option from
+        non-admins). HR may still create EMPLOYEE/MANAGER/HR accounts.
     ValueError
         If an employee with the same emp_id already exists.
     """
+    if data.role == Role.ADMIN and not has_permission(current_role, MANAGE_ROLES):
+        raise PermissionError(
+            "Only roles with MANAGE_ROLES permission can create ADMIN accounts"
+        )
+
     existing = await repo.find_by_id(session, data.emp_id)
     if existing is not None:
         raise ValueError(f"Employee with emp_id '{data.emp_id}' already exists")

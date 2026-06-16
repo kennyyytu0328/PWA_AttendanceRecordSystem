@@ -23,9 +23,19 @@ async def create_employee(
     user: dict = require_role(Role.HR),
     session: AsyncSession = Depends(get_db),
 ) -> EmployeeResponse:
-    """Create a new employee. Requires HR or higher role."""
+    """Create a new employee. Requires HR or higher role.
+
+    Creating an ADMIN account additionally requires the caller to hold
+    MANAGE_ROLES (ADMIN) — HR cannot escalate by minting admins.
+    """
+    current_role = Role(user["role"])
     try:
-        return await employee_service.create_employee(session, body)
+        return await employee_service.create_employee(session, body, current_role)
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

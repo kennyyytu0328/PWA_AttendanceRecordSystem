@@ -116,6 +116,88 @@ class TestCreateEmployee:
 
         assert resp.status_code == 403
 
+    async def test_hr_cannot_create_admin(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """HR can manage employees but must NOT mint an ADMIN account.
+
+        The admin UI hides the ADMIN option from non-admins; this enforces the
+        same rule at the API so a crafted POST can't bypass it (privilege
+        escalation). Creating an ADMIN requires MANAGE_ROLES (ADMIN only).
+        """
+        await _seed_employee(db_session, emp_id="HR001", role=Role.HR)
+        token = _make_token("HR001", Role.HR)
+
+        resp = await client.post(
+            "/api/employees",
+            json={
+                "emp_id": "EVIL01",
+                "name": "Escalated Admin",
+                "department": "Sales",
+                "role": "ADMIN",
+                "password": "newpass123",
+                "shift_start_time": "09:00:00",
+                "shift_end_time": "18:00:00",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert resp.status_code == 403
+        # The account must not have been created.
+        get_resp = await client.get(
+            "/api/employees/EVIL01",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert get_resp.status_code == 404
+
+    async def test_admin_can_create_admin(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """ADMIN (has MANAGE_ROLES) may create another ADMIN."""
+        await _seed_employee(db_session, emp_id="ADMIN01", role=Role.ADMIN)
+        token = _make_token("ADMIN01", Role.ADMIN)
+
+        resp = await client.post(
+            "/api/employees",
+            json={
+                "emp_id": "ADMIN02",
+                "name": "Second Admin",
+                "department": "Sales",
+                "role": "ADMIN",
+                "password": "newpass123",
+                "shift_start_time": "09:00:00",
+                "shift_end_time": "18:00:00",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert resp.status_code == 201
+        assert resp.json()["role"] == "ADMIN"
+
+    async def test_hr_can_still_create_hr(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """The guard targets ADMIN only — HR creating HR/MANAGER stays allowed."""
+        await _seed_employee(db_session, emp_id="HR001", role=Role.HR)
+        token = _make_token("HR001", Role.HR)
+
+        resp = await client.post(
+            "/api/employees",
+            json={
+                "emp_id": "HR002",
+                "name": "Another HR",
+                "department": "Sales",
+                "role": "HR",
+                "password": "newpass123",
+                "shift_start_time": "09:00:00",
+                "shift_end_time": "18:00:00",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert resp.status_code == 201
+        assert resp.json()["role"] == "HR"
+
 
 # ---------------------------------------------------------------------------
 # GET /api/employees/{emp_id} — Get single employee

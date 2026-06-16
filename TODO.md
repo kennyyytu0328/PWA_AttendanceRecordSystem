@@ -1,6 +1,6 @@
 # TODO — GoGoFresh Attendance System (TDD Implementation)
 
-**Status:** All phases 0-14 complete. 275 backend tests + 68 frontend tests passing.
+**Status:** Phases 0-14 complete. 275 backend tests + 68 frontend tests passing. **Phase 15 (Org Reporting Hierarchy) — planned, in progress on branch `feat/org-reporting-hierarchy`.**
 
 ## Phase 0: Project Scaffolding & Test Infrastructure -- DONE
 
@@ -484,6 +484,68 @@ Employees can change their own passwords after authentication. All old JWTs are 
 - [x] `frontend/__tests__/unit/components/ChangePasswordForm.test.tsx` — 8 tests (form render, validation, API calls, success/error states)
 - [x] `frontend/src/messages/en.json` / `zh.json` — Added i18n keys for change password form
 - [x] Plan: `docs/superpowers/plans/2026-05-13-self-service-password-change.md`
+
+## Phase 15: Org Reporting Hierarchy & Subtree-Scoped Authority -- IN PROGRESS
+
+**Branch:** `feat/org-reporting-hierarchy`
+**Goal:** A manager sees **only his own reports** (his reporting subtree), never the whole company and never a peer manager's team. Support org-chart depth (Manager → AVP → VP → President) without exploding the role enum.
+
+**Design (confirmed 2026-06-16) — three axes kept separate:**
+- **Capability** = existing 4-role enum `EMPLOYEE/MANAGER/HR/ADMIN`, **UNCHANGED**. AVP/VP/President are NOT new enum roles. (A flat role level says "how senior" but never "whose" — it can't express "the employees belonging to him." It also sidesteps the painful PG-enum migration documented under "Known Issues / Deferred" below.)
+- **Scope** = new `employees.reports_to` tree. Manager authority = his own subtree (recursive walk of `reports_to`). HR/ADMIN = company-wide. Department label is display-only, **not** an authority mechanism. Two managers in the same department do NOT see each other's people.
+- **Rank** = new `employees.rank` label (`MANAGER/AVP/VP/PRESIDENT`), a configurable ordered list in `system_config` key `ranks`. Display only — grants NO powers ("same powers, wider span"). Does not enforce tree shape.
+
+**Rollout safety:** ship behind `system_config` toggle `org_scoping_enabled` (default **OFF** = current company-wide behavior preserved). HR populates the tree, verifies it, then flips ON — avoids an empty tree making every manager see nobody.
+
+### 15A: ADMIN-creation escalation guard -- DONE (backend; 389 backend tests green)
+On inspection the **frontend was already safe** and the **UPDATE path was already guarded**; the only real hole was the CREATE path at the API. Scope narrowed to a backend-only fix.
+- [x] **No frontend change needed** — create form already hides ADMIN from non-admins (`admin/page.tsx:240`); edit form already wraps the *entire* role selector in `{isAdmin && (…)}` (`:296`), so HR can't change roles at all. My earlier "edit-form escalation gap" premise was a misread.
+- [x] **UPDATE already guarded** — `employee_service.update_employee` raises `PermissionError`→403 when a non-`MANAGE_ROLES` caller sends any `role` field (`employee_service.py:109`). Left as-is.
+- [x] **CREATE gap fixed** — `employee_service.create_employee(session, data, current_role)` now raises `PermissionError` when `data.role == ADMIN` and caller lacks `MANAGE_ROLES`. HR can still create EMPLOYEE/MANAGER/HR. Router threads `current_role` and maps `PermissionError`→403 (`routers/employees.py`).
+- [x] `backend/tests/integration/test_employee_api.py` — HR creating ADMIN → 403 (+ not persisted); ADMIN creating ADMIN → 201; HR creating HR → 201.
+- [x] `backend/tests/unit/test_employee_service.py` — service-level: HR→ADMIN raises `PermissionError` (nothing persisted); ADMIN→ADMIN succeeds. Updated 3 existing callers to the new signature.
+
+### 15B: Data model + migration -- TODO
+- [ ] `backend/app/models/employee.py` — add `reports_to: str | None` (FK→`employees.emp_id`, indexed) and `rank: str | None`.
+- [ ] Alembic migration — add both nullable columns + FK + index. No backfill (existing rows valid; `reports_to=NULL` = flat tree). PG: self-referential FK on `employees`.
+- [ ] `backend/app/schemas/employee.py` — create/update schemas round-trip `reports_to` + `rank`.
+- [ ] `backend/tests/unit/test_models.py` / `test_schemas.py` — column presence + schema round-trip.
+
+### 15C: Ranks config + scoping toggle -- TODO
+- [ ] `backend/app/routers/` — new `GET/PUT /api/admin/ranks` mirroring `leave_types.py` (GET any auth, PUT HR+). Stores ordered list in `system_config` key `ranks` (default `["PRESIDENT","VP","AVP","MANAGER"]`).
+- [ ] `org_scoping_enabled` flag in `system_config` (default `false`) + read helper.
+- [ ] `backend/tests/integration/` — ranks GET/PUT + role gate; toggle read/write.
+
+### 15D: Authority engine -- TODO (unit-tested BEFORE wiring endpoints)
+- [ ] `backend/app/repositories/employee_repository.py::get_subtree_emp_ids(session, root_emp_id) -> set[str]` — `WITH RECURSIVE` over `reports_to`, root inclusive, `UNION` (not `UNION ALL`) so a malformed cycle still terminates.
+- [ ] Cycle/self-reference guard on write: `employee_service` rejects setting `reports_to` to self or to anyone inside the editee's subtree → 400.
+- [ ] `backend/app/middleware/scope.py::resolve_scope(user, session) -> Scope` — HR/ADMIN = company-wide; MANAGER = own subtree; EMPLOYEE = {self}. Resolved from DB (JWT carries only `sub`+`role`, so no token change / no forced re-login). Honors `org_scoping_enabled` (off ⇒ company-wide for everyone, preserving current behavior).
+- [ ] `backend/tests/unit/test_subtree.py` + `test_scope.py` — subtree correctness, cycle rejection, per-role scope, toggle off = company-wide.
+
+### 15E: Endpoint enforcement -- TODO (TDD each: in-subtree pass / out-of-subtree 403 or filtered)
+- [ ] `backend/app/routers/reports.py:64` — `GET /reports/daily`: filter to subtree emp_ids.
+- [ ] `backend/app/routers/attendance.py:72` — `GET /attendance/team`: filter to subtree emp_ids.
+- [ ] `backend/app/routers/attendance.py:174` — `POST /attendance/override`: target ∈ subtree else 403.
+- [ ] `backend/app/routers/reasons.py:59` — `GET /reasons`: queried `emp_id` ∈ subtree else 403.
+- [ ] `department` query param stays as an optional display filter *within* scope (not authority). HR/ADMIN unaffected (company-wide).
+- [ ] `backend/tests/integration/` — for each endpoint: manager sees only own reports; out-of-subtree leak/forbidden cases; HR/ADMIN company-wide; toggle-off parity.
+
+### 15F: Frontend -- TODO
+- [ ] `frontend/src/app/admin/page.tsx` — employee create/edit forms (HR/ADMIN only): add `reports_to` selector (exclude editee's own subtree to prevent cycles) + `rank` dropdown (from `/api/admin/ranks`).
+- [ ] `frontend/src/components/admin/RanksTab.tsx` — mirror `LeaveTypesTab.tsx` for the ordered ranks list.
+- [ ] `frontend/src/app/team/page.tsx` + `reports/page.tsx` — a MANAGER's department picker constrained to his subtree (or read-only "my team" label); HR/ADMIN keep full picker.
+- [ ] `frontend/src/types/index.ts` — add `reports_to` + `rank` to the Employee type.
+- [ ] `frontend/src/messages/{en,zh}.json` — i18n keys (reports-to, rank, ranks management, org-scoping toggle).
+- [ ] vitest — `reports_to`/`rank` selectors, `RanksTab`, scoped picker behavior.
+
+### 15G: Docs -- TODO
+- [ ] `CLAUDE.md` — new convention entry documenting the reporting-tree authority model (subtree scope, rank-as-label, `org_scoping_enabled` toggle, 4 scoped endpoints).
+- [ ] Update "Known Issues / Deferred → Roles are hard-coded" note to point here (org depth now solved via the tree, so adding enum roles is no longer the answer for hierarchy).
+
+### Non-goals (Phase 15)
+- No multi-level approval workflow — authority = visibility + override over your subtree; overrides still take effect immediately (convention #20).
+- Single boss per employee (one `reports_to`) — no matrix / dotted-line reporting.
+- Rank grants no powers; export stays HR-only.
 
 ## Test Coverage Summary
 

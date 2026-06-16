@@ -69,7 +69,7 @@ async def test_create_employee_hashes_password(db_session: AsyncSession) -> None
     """Service must hash the plain password before persisting."""
     data = _make_create_schema(password="my_plain_password")
 
-    response = await svc_create_employee(db_session, data)
+    response = await svc_create_employee(db_session, data, Role.HR)
 
     # Verify via the repository that the stored password is hashed, not plain
     from app.repositories.employee_repository import find_by_id
@@ -89,7 +89,7 @@ async def test_create_employee_returns_response_without_password(
     """Service must return EmployeeResponse which excludes the password."""
     data = _make_create_schema()
 
-    response = await svc_create_employee(db_session, data)
+    response = await svc_create_employee(db_session, data, Role.HR)
 
     assert isinstance(response, EmployeeResponse)
     assert response.emp_id == data.emp_id
@@ -106,10 +106,39 @@ async def test_create_employee_duplicate_id_raises(
 ) -> None:
     """Creating an employee with an existing emp_id must raise ValueError."""
     data = _make_create_schema(emp_id="EMP_DUP")
-    await svc_create_employee(db_session, data)
+    await svc_create_employee(db_session, data, Role.HR)
 
     with pytest.raises(ValueError, match="already exists"):
-        await svc_create_employee(db_session, data)
+        await svc_create_employee(db_session, data, Role.HR)
+
+
+# ---- 3b. non-admin cannot create an ADMIN account ----
+
+
+async def test_create_admin_requires_manage_roles(
+    db_session: AsyncSession,
+) -> None:
+    """HR (no MANAGE_ROLES) creating an ADMIN must raise PermissionError."""
+    data = _make_create_schema(emp_id="EVIL01", role=Role.ADMIN)
+
+    with pytest.raises(PermissionError, match="MANAGE_ROLES"):
+        await svc_create_employee(db_session, data, Role.HR)
+
+    # Nothing should have been persisted.
+    from app.repositories.employee_repository import find_by_id
+
+    assert await find_by_id(db_session, "EVIL01") is None
+
+
+async def test_admin_can_create_admin_service(
+    db_session: AsyncSession,
+) -> None:
+    """ADMIN (has MANAGE_ROLES) creating an ADMIN succeeds."""
+    data = _make_create_schema(emp_id="ADMIN02", role=Role.ADMIN)
+
+    response = await svc_create_employee(db_session, data, Role.ADMIN)
+
+    assert response.role == Role.ADMIN
 
 
 # ---- 4. authenticate valid credentials ----
