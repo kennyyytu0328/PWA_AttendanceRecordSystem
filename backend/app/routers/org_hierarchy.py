@@ -68,7 +68,15 @@ async def put_org_scoping(
     user: dict = require_role(Role.HR),
     session: AsyncSession = Depends(get_db),
 ) -> OrgScopingResponse:
-    """Flip the subtree-scoped-authority switch. Requires HR or above."""
+    """Flip the subtree-scoped-authority switch. Requires HR or above.
+
+    Deliberate decision (reviewed): HR may both ENABLE and DISABLE scoping.
+    An automated security review flagged that *disabling* loosens visibility
+    company-wide (every manager regains all-company access) and suggested an
+    asymmetric gate (HR-enable / ADMIN-disable). The product owner chose to let
+    HR own the full switch because HR runs the rollout. Accepted tradeoff — keep
+    the symmetric HR+ gate; do not "fix" it back to ADMIN without confirming.
+    """
     enabled = await system_config_repository.set_org_scoping_enabled(
         session, body.enabled, updated_by=user["sub"]
     )
