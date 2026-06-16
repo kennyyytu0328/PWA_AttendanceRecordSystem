@@ -4,9 +4,9 @@ Two resources:
 - /api/admin/ranks        — configurable ordered org-chart rank labels.
                             GET any authenticated user; PUT HR or above.
 - /api/admin/org-scoping  — the system-wide subtree-scoped-authority switch.
-                            GET any authenticated user; PUT ADMIN only, since
-                            flipping it off would instantly restore company-wide
-                            visibility to every manager.
+                            GET any authenticated user; PUT HR or above (HR
+                            owns the rollout — they populate the tree and flip
+                            the switch once it is in place).
 """
 
 from fastapi import APIRouter, Depends
@@ -65,10 +65,10 @@ async def get_org_scoping(
 @scoping_router.put("", response_model=OrgScopingResponse)
 async def put_org_scoping(
     body: OrgScopingUpdateRequest,
-    user: dict = require_role(Role.ADMIN),
+    user: dict = require_role(Role.HR),
     session: AsyncSession = Depends(get_db),
 ) -> OrgScopingResponse:
-    """Flip the subtree-scoped-authority switch. Requires ADMIN."""
+    """Flip the subtree-scoped-authority switch. Requires HR or above."""
     enabled = await system_config_repository.set_org_scoping_enabled(
         session, body.enabled, updated_by=user["sub"]
     )

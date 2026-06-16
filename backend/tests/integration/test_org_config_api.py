@@ -116,10 +116,24 @@ async def test_get_org_scoping_defaults_off(
     assert res.json()["enabled"] is False
 
 
-async def test_put_org_scoping_requires_admin(
+async def test_put_org_scoping_requires_hr(
     client: AsyncClient, db_session: AsyncSession
 ):
-    """HR cannot flip the authority switch — ADMIN only."""
+    """Below HR cannot flip the authority switch."""
+    await _seed_employee(db_session, emp_id="MGR_S", role=Role.MANAGER)
+    token = _make_token("MGR_S", Role.MANAGER)
+    res = await client.put(
+        "/api/admin/org-scoping",
+        json={"enabled": True},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res.status_code == 403
+
+
+async def test_put_org_scoping_as_hr_enables(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """HR runs the rollout, so HR may flip the switch (HR+ allowed)."""
     await _seed_employee(db_session, emp_id="HR_S", role=Role.HR)
     token = _make_token("HR_S", Role.HR)
     res = await client.put(
@@ -127,7 +141,14 @@ async def test_put_org_scoping_requires_admin(
         json={"enabled": True},
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert res.status_code == 403
+    assert res.status_code == 200, res.text
+    assert res.json()["enabled"] is True
+
+    # Round-trips on the next read.
+    res2 = await client.get(
+        "/api/admin/org-scoping", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert res2.json()["enabled"] is True
 
 
 async def test_put_org_scoping_as_admin_enables(
@@ -142,9 +163,3 @@ async def test_put_org_scoping_as_admin_enables(
     )
     assert res.status_code == 200, res.text
     assert res.json()["enabled"] is True
-
-    # Round-trips on the next read.
-    res2 = await client.get(
-        "/api/admin/org-scoping", headers={"Authorization": f"Bearer {token}"}
-    )
-    assert res2.json()["enabled"] is True

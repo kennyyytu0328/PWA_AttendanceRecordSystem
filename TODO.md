@@ -514,7 +514,7 @@ On inspection the **frontend was already safe** and the **UPDATE path was alread
 ### 15C: Ranks config + scoping toggle -- DONE (403 backend tests green)
 - [x] `system_config_repository` — `get_ranks`/`set_ranks` (key `ranks`, value `{"ranks":[…]}`, default `["PRESIDENT","VP","AVP","MANAGER"]`) and `get_org_scoping_enabled`/`set_org_scoping_enabled` (key `org_scoping_enabled`, value `{"enabled":bool}`, default `False`).
 - [x] `backend/app/schemas/org_hierarchy.py` — Ranks + OrgScoping request/response schemas.
-- [x] `backend/app/routers/org_hierarchy.py` — `GET/PUT /api/admin/ranks` (GET any auth, PUT HR+) and `GET/PUT /api/admin/org-scoping` (GET any auth, **PUT ADMIN-only** — flipping it off restores company-wide visibility, so it's a system-level switch). Both registered in `main.py`.
+- [x] `backend/app/routers/org_hierarchy.py` — `GET/PUT /api/admin/ranks` (GET any auth, PUT HR+) and `GET/PUT /api/admin/org-scoping` (GET any auth, **PUT HR+** — HR owns the rollout: populate the tree, then flip the switch). Both registered in `main.py`.
 - [x] `backend/tests/integration/test_org_config_api.py` (6) + `backend/tests/unit/test_system_config_ranks.py` (4) — defaults, role gates, round-trip.
 
 ### 15D: Authority engine -- TODO (unit-tested BEFORE wiring endpoints)
