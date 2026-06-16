@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user, require_role
+from app.middleware.scope import resolve_scope
 from app.models.employee import Role
 from app.schemas.attendance_reason import ReasonResponse, ReasonSubmitRequest
 from app.services import reason_service
@@ -59,7 +60,17 @@ async def get_reasons_by_employee(
     user: dict = require_role(Role.MANAGER),
     session: AsyncSession = Depends(get_db),
 ):
-    """Return reasons for a specific employee. Requires MANAGER+ role."""
+    """Return reasons for a specific employee. Requires MANAGER+ role.
+
+    When subtree scoping is active a manager may only query employees in their
+    own reporting subtree; HR/ADMIN (and the toggle-off path) are unrestricted.
+    """
+    scope = await resolve_scope(user, session)
+    if not scope.can_see(emp_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view reasons for an employee outside your team",
+        )
     reasons = await reason_service.get_reasons_for_employee(
         session, emp_id, start_date, end_date
     )

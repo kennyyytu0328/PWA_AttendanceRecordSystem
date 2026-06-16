@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user, require_role
+from app.middleware.scope import resolve_scope
 from app.models.employee import Role
 from app.schemas.attendance import (
     AttendanceLogResponse,
@@ -72,11 +73,21 @@ async def get_team(
     user: dict = require_role(Role.MANAGER),
     session: AsyncSession = Depends(get_db),
 ):
-    """Return attendance logs for the manager's team between start_date and end_date (inclusive)."""
+    """Return attendance logs for the manager's team between start_date and end_date (inclusive).
+
+    When subtree scoping is active the team is the manager's reporting subtree;
+    otherwise (toggle off, or HR/ADMIN) the legacy department-scoped view stands.
+    """
+    scope = await resolve_scope(user, session)
     try:
-        logs = await attendance_service.get_team_logs(
-            session, user["sub"], start_date, end_date
-        )
+        if scope.company_wide:
+            logs = await attendance_service.get_team_logs(
+                session, user["sub"], start_date, end_date
+            )
+        else:
+            logs = await attendance_service.get_logs_for_emp_ids(
+                session, set(scope.visible_emp_ids or set()), start_date, end_date
+            )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -174,7 +185,19 @@ async def override(
     user: dict = require_role(Role.MANAGER),
     session: AsyncSession = Depends(get_db),
 ):
-    """Create a manager-override attendance entry."""
+    """Create a manager-override attendance entry.
+
+    When subtree scoping is active a manager may only override employees in
+    their own reporting subtree; HR/ADMIN (and the toggle-off path) are
+    unrestricted, preserving the prior behavior.
+    """
+    scope = await resolve_scope(user, session)
+    if not scope.can_see(body.target_emp_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to override an employee outside your team",
+        )
+
     ip_address = request.client.host if request.client else "unknown"
 
     try:

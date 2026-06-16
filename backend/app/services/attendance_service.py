@@ -237,6 +237,24 @@ async def get_team_logs(
     )
 
 
+async def get_logs_for_emp_ids(
+    session: AsyncSession,
+    emp_ids: set[str],
+    start_date: datetime.date,
+    end_date: datetime.date | None = None,
+) -> list[AttendanceLog]:
+    """Return logs for an explicit set of emp_ids (subtree-scoped team view)."""
+    if end_date is None:
+        end_date = start_date
+    start = datetime.datetime.combine(start_date, datetime.time.min)
+    end = datetime.datetime.combine(
+        end_date + datetime.timedelta(days=1), datetime.time.min
+    )
+    return await attendance_repository.find_by_date_range_and_emp_ids(
+        session, start, end, emp_ids
+    )
+
+
 async def get_all_logs(
     session: AsyncSession,
     start_date: datetime.date,

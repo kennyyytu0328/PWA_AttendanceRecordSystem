@@ -63,6 +63,29 @@ async def find_by_date_range(
     return list(result.scalars().all())
 
 
+async def find_by_date_range_and_emp_ids(
+    session: AsyncSession,
+    start: datetime.datetime,
+    end: datetime.datetime,
+    emp_ids: set[str],
+) -> list[AttendanceLog]:
+    """Return logs for the given emp_ids where ``start <= timestamp < end``.
+
+    Used for subtree-scoped team views (Phase 15E). An empty set yields no rows.
+    """
+    if not emp_ids:
+        return []
+    stmt = (
+        select(AttendanceLog)
+        .where(AttendanceLog.timestamp >= start)
+        .where(AttendanceLog.timestamp < end)
+        .where(AttendanceLog.emp_id.in_(emp_ids))
+        .order_by(AttendanceLog.timestamp.asc())
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
 async def find_by_date_range_and_department(
     session: AsyncSession,
     start: datetime.datetime,

@@ -523,13 +523,14 @@ On inspection the **frontend was already safe** and the **UPDATE path was alread
 - [x] `backend/app/middleware/scope.py` — `Scope` (frozen dataclass, `.can_see(emp_id)`) + `resolve_scope(user, session)`. HR/ADMIN = company-wide; MANAGER = own subtree; EMPLOYEE = {self}. Resolved from DB (no token change). Honors `org_scoping_enabled` (OFF ⇒ company-wide for everyone).
 - [x] `test_subtree.py` (5: full tree, mid-branch, leaf, sibling-exclusion, cycle-termination), `test_scope.py` (4: HR/ADMIN company-wide, manager subtree when on, manager company-wide when off, employee self), service write-guard tests (4) + integration 400 mapping (1).
 
-### 15E: Endpoint enforcement -- TODO (TDD each: in-subtree pass / out-of-subtree 403 or filtered)
-- [ ] `backend/app/routers/reports.py:64` — `GET /reports/daily`: filter to subtree emp_ids.
-- [ ] `backend/app/routers/attendance.py:72` — `GET /attendance/team`: filter to subtree emp_ids.
-- [ ] `backend/app/routers/attendance.py:174` — `POST /attendance/override`: target ∈ subtree else 403.
-- [ ] `backend/app/routers/reasons.py:59` — `GET /reasons`: queried `emp_id` ∈ subtree else 403.
-- [ ] `department` query param stays as an optional display filter *within* scope (not authority). HR/ADMIN unaffected (company-wide).
-- [ ] `backend/tests/integration/` — for each endpoint: manager sees only own reports; out-of-subtree leak/forbidden cases; HR/ADMIN company-wide; toggle-off parity.
+### 15E: Endpoint enforcement -- DONE (424 backend tests green)
+All four use `resolve_scope`; the toggle-OFF path is `company_wide` so each endpoint's legacy behavior is preserved byte-for-byte.
+- [x] `GET /reports/daily` — when `not scope.company_wide`, filter summaries to `scope.can_see(emp_id)`. (Legacy = company-wide for MANAGER+, so off = unchanged.)
+- [x] `GET /attendance/team` — branch: `company_wide` → legacy `get_team_logs` (department); else subtree via new `get_logs_for_emp_ids` + `attendance_repository.find_by_date_range_and_emp_ids`. (Legacy /team is *department*-scoped, so off = department, on = subtree.)
+- [x] `POST /attendance/override` — `403` when `not scope.can_see(target_emp_id)`. (Legacy = unrestricted, so off = unrestricted.)
+- [x] `GET /reasons` — `403` when `not scope.can_see(emp_id)`.
+- [x] HR/ADMIN always `company_wide` (unaffected). `/export` untouched (HR+ only).
+- [x] `backend/tests/integration/test_org_scoping_enforcement.py` (6) — subtree member in a *different department* proves subtree≠department; per-endpoint on/off + HR-sees-all.
 
 ### 15F: Frontend -- TODO
 - [ ] `frontend/src/app/admin/page.tsx` — employee create/edit forms (HR/ADMIN only): add `reports_to` selector (exclude editee's own subtree to prevent cycles) + `rank` dropdown (from `/api/admin/ranks`).

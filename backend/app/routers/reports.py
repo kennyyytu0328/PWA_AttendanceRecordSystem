@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.middleware.auth_middleware import require_role
+from app.middleware.scope import resolve_scope
 from app.models.employee import Role
 from app.repositories import (
     employee_repository,
@@ -79,6 +80,12 @@ async def get_daily_report(
         include_terminated=include_terminated,
         submission_filter=effective_filter,
     )
+
+    # Subtree scoping: a manager sees only their reporting subtree. HR/ADMIN and
+    # the toggle-off path are company_wide, so this filter is a no-op for them.
+    scope = await resolve_scope(user, session)
+    if not scope.company_wide:
+        summaries = [s for s in summaries if scope.can_see(s.emp_id)]
 
     summary_ids = [s.id for s in summaries if s.id is not None]
     reasons = await reason_repository.find_by_summary_ids(session, summary_ids)
