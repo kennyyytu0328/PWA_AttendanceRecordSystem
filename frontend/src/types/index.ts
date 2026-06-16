@@ -28,6 +28,8 @@ export interface Employee {
   readonly shift_start_time: string;
   readonly shift_end_time: string;
   readonly terminated_at?: string | null;
+  readonly reports_to?: string | null;
+  readonly rank?: string | null;
 }
 
 export interface EmployeeCreate {
@@ -38,6 +40,8 @@ export interface EmployeeCreate {
   readonly password: string;
   readonly shift_start_time: string;
   readonly shift_end_time: string;
+  readonly reports_to?: string | null;
+  readonly rank?: string | null;
 }
 
 export interface EmployeeUpdate {
@@ -47,6 +51,8 @@ export interface EmployeeUpdate {
   readonly password?: string;
   readonly shift_start_time?: string;
   readonly shift_end_time?: string;
+  readonly reports_to?: string | null;
+  readonly rank?: string | null;
 }
 
 // ---------------------------------------------------------------------------

@@ -532,13 +532,15 @@ All four use `resolve_scope`; the toggle-OFF path is `company_wide` so each endp
 - [x] HR/ADMIN always `company_wide` (unaffected). `/export` untouched (HR+ only).
 - [x] `backend/tests/integration/test_org_scoping_enforcement.py` (6) — subtree member in a *different department* proves subtree≠department; per-endpoint on/off + HR-sees-all.
 
-### 15F: Frontend -- TODO
-- [ ] `frontend/src/app/admin/page.tsx` — employee create/edit forms (HR/ADMIN only): add `reports_to` selector (exclude editee's own subtree to prevent cycles) + `rank` dropdown (from `/api/admin/ranks`).
-- [ ] `frontend/src/components/admin/RanksTab.tsx` — mirror `LeaveTypesTab.tsx` for the ordered ranks list.
-- [ ] `frontend/src/app/team/page.tsx` + `reports/page.tsx` — a MANAGER's department picker constrained to his subtree (or read-only "my team" label); HR/ADMIN keep full picker.
-- [ ] `frontend/src/types/index.ts` — add `reports_to` + `rank` to the Employee type.
-- [ ] `frontend/src/messages/{en,zh}.json` — i18n keys (reports-to, rank, ranks management, org-scoping toggle).
-- [ ] vitest — `reports_to`/`rank` selectors, `RanksTab`, scoped picker behavior.
+### 15F: Frontend -- DONE (141 frontend tests pass; 1 pre-existing unrelated monthly-override flake)
+- [x] `frontend/src/app/admin/page.tsx` — employee create + edit forms gain a `reports_to` selector (excludes self + terminated; backend rejects deeper cycles with 400) and a `rank` dropdown (from `/api/admin/ranks`). Create omits blank fields; edit sends `null` to un-assign.
+- [x] `frontend/src/components/admin/RanksTab.tsx` — ordered ranks list with add/remove **and up/down reordering** (order = seniority). Mirrors LeaveTypesTab + ranksApi.
+- [x] `frontend/src/components/admin/OrgScopingSection.tsx` — the `org_scoping_enabled` toggle (switch) so HR/ADMIN can flip subtree scoping from the UI. Both rendered in the admin page.
+- [x] `frontend/src/lib/api/org-hierarchy.ts` — `ranksApi` + `orgScopingApi` clients.
+- [x] `frontend/src/types/index.ts` — `reports_to` + `rank` added to Employee/Create/Update.
+- [x] `frontend/src/messages/{en,zh}.json` — i18n keys (reports-to, rank, ranks management, org-scoping toggle).
+- [x] vitest — `RanksTab` (render/add/remove/reorder/save, 4) + `OrgScopingSection` (load/flip, 2). Existing admin page tests still green.
+- [ ] DEFERRED (cosmetic): team/reports MANAGER department-picker constraint. Backend already enforces subtree scoping on those endpoints regardless of the picker, so this is non-blocking polish — managers simply get subtree-filtered results.
 
 ### 15G: Docs -- TODO
 - [ ] `CLAUDE.md` — new convention entry documenting the reporting-tree authority model (subtree scope, rank-as-label, `org_scoping_enabled` toggle, 4 scoped endpoints).

@@ -4,6 +4,9 @@ import { Shield, Users, MapPin, Settings, Plus, Pencil, X, Timer, Building2, Tra
 
 import { BackButton } from "@/components/BackButton";
 import { LeaveTypesTab } from "@/components/admin/LeaveTypesTab";
+import { RanksTab } from "@/components/admin/RanksTab";
+import { OrgScopingSection } from "@/components/admin/OrgScopingSection";
+import { ranksApi } from "@/lib/api/org-hierarchy";
 import { useEffect, useState } from "react";
 
 import { apiClient } from "@/lib/api";
@@ -40,6 +43,22 @@ function EmployeeManagementSection({ userRole, currentEmpId, departments }: { re
   const [editingEmpId, setEditingEmpId] = useState<string | null>(null);
   const [formMessage, setFormMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [showTerminated, setShowTerminated] = useState(false);
+  const [ranks, setRanks] = useState<readonly string[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    ranksApi
+      .list()
+      .then((data) => {
+        if (!cancelled) setRanks(Array.isArray(data?.ranks) ? data.ranks : []);
+      })
+      .catch(() => {
+        // silent — rank dropdown just stays empty
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function fetchEmployees() {
     setIsLoading(true);
@@ -64,6 +83,8 @@ function EmployeeManagementSection({ userRole, currentEmpId, departments }: { re
     const form = e.currentTarget;
     const fd = new FormData(form);
 
+    const reportsTo = (fd.get("reports_to") as string) || "";
+    const rank = (fd.get("rank") as string) || "";
     try {
       await apiClient.post("/api/employees", {
         emp_id: fd.get("emp_id"),
@@ -73,6 +94,9 @@ function EmployeeManagementSection({ userRole, currentEmpId, departments }: { re
         password: fd.get("password"),
         shift_start_time: fd.get("shift_start_time"),
         shift_end_time: fd.get("shift_end_time"),
+        // Omit when blank so the optional (min_length=1) backend fields stay null.
+        ...(reportsTo ? { reports_to: reportsTo } : {}),
+        ...(rank ? { rank } : {}),
       });
       setFormMessage({ type: "success", text: t("admin.employeeCreated") });
       setShowCreateForm(false);
@@ -89,7 +113,7 @@ function EmployeeManagementSection({ userRole, currentEmpId, departments }: { re
     const form = e.currentTarget;
     const fd = new FormData(form);
 
-    const body: Record<string, string> = {};
+    const body: Record<string, string | null> = {};
     const name = fd.get("name") as string;
     const department = fd.get("department") as string;
     const role = fd.get("role") as string;
@@ -100,6 +124,16 @@ function EmployeeManagementSection({ userRole, currentEmpId, departments }: { re
     if (role) body.role = role;
     if (shiftStart) body.shift_start_time = shiftStart;
     if (shiftEnd) body.shift_end_time = shiftEnd;
+    // reports_to / rank are always present in the form: empty string means
+    // "un-assign" → send null (clears the manager / rank); a value sets it.
+    if (fd.has("reports_to")) {
+      const rt = (fd.get("reports_to") as string) || "";
+      body.reports_to = rt === "" ? null : rt;
+    }
+    if (fd.has("rank")) {
+      const rk = (fd.get("rank") as string) || "";
+      body.rank = rk === "" ? null : rk;
+    }
 
     try {
       await apiClient.put(`/api/employees/${empId}`, body);
@@ -244,6 +278,18 @@ function EmployeeManagementSection({ userRole, currentEmpId, departments }: { re
               <input name="shift_start_time" type="time" required defaultValue="09:00" className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
               <input name="shift_end_time" type="time" required defaultValue="18:00" className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
             </div>
+            <select name="reports_to" defaultValue="" aria-label={t("admin.reportsTo")} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm">
+              <option value="">{t("admin.reportsToNone")}</option>
+              {employees.filter((e) => !e.terminated_at).map((e) => (
+                <option key={e.emp_id} value={e.emp_id}>{e.name} ({e.emp_id})</option>
+              ))}
+            </select>
+            <select name="rank" defaultValue="" aria-label={t("admin.rank")} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm">
+              <option value="">{t("admin.rankNone")}</option>
+              {ranks.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
           </div>
           <div className="flex gap-2">
             <button type="submit" className="rounded-lg bg-gradient-to-r from-[#4ec6c1] to-[#6dcf7c] px-4 py-1.5 text-xs font-medium text-white hover:from-[#45b5b0] hover:to-[#5fc06e]">{t("common.create")}</button>
@@ -311,6 +357,24 @@ function EmployeeManagementSection({ userRole, currentEmpId, departments }: { re
                         <div>
                           <label className="text-xs text-gray-500">{t("admin.editShiftEnd")}</label>
                           <input name="shift_end_time" type="time" defaultValue={emp.shift_end_time} className="block rounded border border-gray-300 px-2 py-1 text-sm" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500">{t("admin.reportsTo")}</label>
+                          <select name="reports_to" defaultValue={emp.reports_to ?? ""} className="block w-32 rounded border border-gray-300 px-2 py-1 text-sm">
+                            <option value="">{t("admin.reportsToNone")}</option>
+                            {employees.filter((e) => e.emp_id !== emp.emp_id && !e.terminated_at).map((e) => (
+                              <option key={e.emp_id} value={e.emp_id}>{e.name} ({e.emp_id})</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500">{t("admin.rank")}</label>
+                          <select name="rank" defaultValue={emp.rank ?? ""} className="block rounded border border-gray-300 px-2 py-1 text-sm">
+                            <option value="">{t("admin.rankNone")}</option>
+                            {ranks.map((r) => (
+                              <option key={r} value={r}>{r}</option>
+                            ))}
+                          </select>
                         </div>
                         <button type="submit" className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-500">{t("common.save")}</button>
                         <button type="button" onClick={() => setEditingEmpId(null)} className="rounded border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100">
@@ -1135,6 +1199,8 @@ export default function AdminPage() {
         <div className="space-y-6">
           <DepartmentManagementSection departments={departments} onDepartmentsChange={setDepartments} />
           <EmployeeManagementSection userRole={userRole} currentEmpId={currentEmpId} departments={departments} />
+          <RanksTab />
+          <OrgScopingSection />
           <LeaveTypesTab />
           <OfficeLocationSection />
           <GracePeriodSection />
