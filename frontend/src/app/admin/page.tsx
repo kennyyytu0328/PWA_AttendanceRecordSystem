@@ -278,18 +278,26 @@ function EmployeeManagementSection({ userRole, currentEmpId, departments }: { re
               <input name="shift_start_time" type="time" required defaultValue="09:00" className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
               <input name="shift_end_time" type="time" required defaultValue="18:00" className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
             </div>
-            <select name="reports_to" defaultValue="" aria-label={t("admin.reportsTo")} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm">
-              <option value="">{t("admin.reportsToNone")}</option>
-              {employees.filter((e) => !e.terminated_at).map((e) => (
-                <option key={e.emp_id} value={e.emp_id}>{e.name} ({e.emp_id})</option>
-              ))}
-            </select>
-            <select name="rank" defaultValue="" aria-label={t("admin.rank")} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm">
-              <option value="">{t("admin.rankNone")}</option>
-              {ranks.map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-600">{t("admin.reportsTo")}</label>
+              <select name="reports_to" defaultValue="" aria-label={t("admin.reportsTo")} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm">
+                <option value="">{t("admin.reportsToNone")}</option>
+                {employees.filter((e) => !e.terminated_at).map((e) => (
+                  <option key={e.emp_id} value={e.emp_id}>{e.name} ({e.emp_id})</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500">{t("admin.reportsToHint")}</p>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-600">{t("admin.rank")}</label>
+              <select name="rank" defaultValue="" aria-label={t("admin.rank")} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm">
+                <option value="">{t("admin.rankNone")}</option>
+                {ranks.map((r) => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500">{t("admin.rankHint")}</p>
+            </div>
           </div>
           <div className="flex gap-2">
             <button type="submit" className="rounded-lg bg-gradient-to-r from-[#4ec6c1] to-[#6dcf7c] px-4 py-1.5 text-xs font-medium text-white hover:from-[#45b5b0] hover:to-[#5fc06e]">{t("common.create")}</button>
@@ -359,22 +367,24 @@ function EmployeeManagementSection({ userRole, currentEmpId, departments }: { re
                           <input name="shift_end_time" type="time" defaultValue={emp.shift_end_time} className="block rounded border border-gray-300 px-2 py-1 text-sm" />
                         </div>
                         <div>
-                          <label className="text-xs text-gray-500">{t("admin.reportsTo")}</label>
+                          <label className="text-xs text-gray-500" title={t("admin.reportsToHint")}>{t("admin.reportsTo")}</label>
                           <select name="reports_to" defaultValue={emp.reports_to ?? ""} className="block w-32 rounded border border-gray-300 px-2 py-1 text-sm">
                             <option value="">{t("admin.reportsToNone")}</option>
                             {employees.filter((e) => e.emp_id !== emp.emp_id && !e.terminated_at).map((e) => (
                               <option key={e.emp_id} value={e.emp_id}>{e.name} ({e.emp_id})</option>
                             ))}
                           </select>
+                          <p className="mt-0.5 max-w-[12rem] text-[11px] leading-tight text-gray-400">{t("admin.reportsToHint")}</p>
                         </div>
                         <div>
-                          <label className="text-xs text-gray-500">{t("admin.rank")}</label>
+                          <label className="text-xs text-gray-500" title={t("admin.rankHint")}>{t("admin.rank")}</label>
                           <select name="rank" defaultValue={emp.rank ?? ""} className="block rounded border border-gray-300 px-2 py-1 text-sm">
                             <option value="">{t("admin.rankNone")}</option>
                             {ranks.map((r) => (
                               <option key={r} value={r}>{r}</option>
                             ))}
                           </select>
+                          <p className="mt-0.5 max-w-[12rem] text-[11px] leading-tight text-gray-400">{t("admin.rankHint")}</p>
                         </div>
                         <button type="submit" className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-500">{t("common.save")}</button>
                         <button type="button" onClick={() => setEditingEmpId(null)} className="rounded border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100">

@@ -163,7 +163,7 @@
     "failedToLoadEmployees": "載入員工清單失敗",
     "failedToLoadLocation": "載入辦公地點失敗",
     "roleEmployee": "員工",
-    "roleManager": "經理",
+    "roleManager": "管理層",
     "roleHr": "人事",
     "roleAdmin": "管理員",
     "gracePeriod": "寬限時間",
@@ -203,8 +203,10 @@
     "leaveTypesLoadError": "載入假別失敗",
     "reportsTo": "直屬主管",
     "reportsToNone": "— 無（組織最上層）",
+    "reportsToHint": "選擇此員工的直屬主管，用於建立組織圖與決定各主管可查看的下屬範圍。最高層級（如負責人）請選「無」。",
     "rank": "職級",
     "rankNone": "— 無",
+    "rankHint": "僅為職稱標籤，不影響任何權限（權限由「角色」決定）。選項可於「組織職級」分頁設定。",
     "ranks": "組織職級",
     "ranksHint": "組織職級標籤，由高至低排序。僅供顯示，不影響權限。",
     "ranksAdd": "新增職級",
@@ -240,7 +242,7 @@
     "reason": "事由",
     "overridden": "已覆寫",
     "accessDenied": "存取被拒絕",
-    "accessDeniedMessage": "您需要經理或以上角色才能檢視團隊考勤。"
+    "accessDeniedMessage": "您需要管理層或以上角色才能檢視團隊考勤。"
   },
   "reports": {
     "title": "報表",
@@ -276,7 +278,7 @@
     "generateSuccess": "已產生 {count} 筆摘要",
     "generateFailed": "產生摘要失敗",
     "accessDenied": "存取被拒絕",
-    "accessDeniedMessage": "您需要經理或以上角色才能檢視報表。",
+    "accessDeniedMessage": "您需要管理層或以上角色才能檢視報表。",
     "employee": "員工",
     "employeePlaceholder": "所有員工",
     "statusOnTime": "準時",
