@@ -52,11 +52,14 @@ GoGoFresh Attendance — step-by-step guide for deploying to a production enviro
 ## 1. Clone the repo onto the server
 
 ```bash
-sudo git clone <your-repo-url> /opt/gogofresh-attendance
-sudo chown -R $USER:$USER /opt/gogofresh-attendance   # so later `git pull` / edits don't need sudo
-cd /opt/gogofresh-attendance
+# Cloned into the deploy user's home dir (this is where go2fresh-1 actually has it).
+# No sudo/chown needed since you own your home directory.
+git clone <your-repo-url> ~/gogofresh-attendance
+cd ~/gogofresh-attendance
 ls   # expect: backend/  docs/  docker-compose.prod.yml  frontend/  ...
 ```
+
+> **Path note:** This guide uses `~/gogofresh-attendance` (e.g. `/home/gogoffccict/gogofresh-attendance` on `go2fresh-1`). If your site cloned into a system path like `/opt/gogofresh-attendance` instead, substitute that path in every `cd` below.
 
 ### 1.1 Authentication for Bitbucket / GitHub clones
 
@@ -505,7 +508,7 @@ The `attendance` database inside the `db` container (the `pgdata` Docker volume)
 set -e
 BACKUP_DIR=/var/backups/attendance
 mkdir -p "$BACKUP_DIR"
-cd /opt/gogofresh-attendance
+cd ~/gogofresh-attendance
 docker compose -f docker-compose.prod.yml exec -T db \
     pg_dump -U attendance_user attendance \
     | gzip > "$BACKUP_DIR/attendance-$(date +%F).sql.gz"
@@ -532,7 +535,7 @@ Test restore periodically — a backup you haven't tested is not a backup. Note 
 Run on the production host:
 
 ```bash
-cd /opt/gogofresh-attendance
+cd ~/gogofresh-attendance
 git pull
 docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml exec backend alembic upgrade head

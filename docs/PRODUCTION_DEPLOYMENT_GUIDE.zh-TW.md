@@ -51,11 +51,14 @@ GoGoFresh 差勤系統 — 部署至正式環境的逐步指南。
 ## 1. 將 repo clone 至伺服器
 
 ```bash
-sudo git clone <your-repo-url> /opt/gogofresh-attendance
-sudo chown -R $USER:$USER /opt/gogofresh-attendance   # 後續 git pull / 編輯不需 sudo
-cd /opt/gogofresh-attendance
+# clone 至部署使用者的家目錄（go2fresh-1 實際就放在這裡）。
+# 家目錄本來就是你擁有的，不需要 sudo / chown。
+git clone <your-repo-url> ~/gogofresh-attendance
+cd ~/gogofresh-attendance
 ls   # 應看到：backend/  docs/  docker-compose.prod.yml  frontend/  ...
 ```
+
+> **路徑說明：** 本指南統一使用 `~/gogofresh-attendance`（在 `go2fresh-1` 上即 `/home/gogoffccict/gogofresh-attendance`）。若你的環境改 clone 到 `/opt/gogofresh-attendance` 之類的系統路徑，請將下文所有 `cd` 指令改成該路徑。
 
 ### 1.1 Bitbucket / GitHub clone 驗證方式
 
@@ -497,7 +500,7 @@ curl -I http://127.0.0.1:3000/login
 set -e
 BACKUP_DIR=/var/backups/attendance
 mkdir -p "$BACKUP_DIR"
-cd /opt/gogofresh-attendance
+cd ~/gogofresh-attendance
 docker compose -f docker-compose.prod.yml exec -T db \
     pg_dump -U attendance_user attendance \
     | gzip > "$BACKUP_DIR/attendance-$(date +%F).sql.gz"
@@ -524,7 +527,7 @@ sudo /etc/cron.daily/attendance-backup && ls -la /var/backups/attendance/
 於 production 主機上執行：
 
 ```bash
-cd /opt/gogofresh-attendance
+cd ~/gogofresh-attendance
 git pull
 docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml exec backend alembic upgrade head
