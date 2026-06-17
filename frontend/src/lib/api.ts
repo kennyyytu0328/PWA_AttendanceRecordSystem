@@ -6,6 +6,10 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     public readonly detail: string,
+    /** Stable machine-readable code when the backend returns a structured
+     * detail ({code, message}); undefined for plain-string errors. Lets the UI
+     * localize the message instead of showing the raw English detail. */
+    public readonly code?: string,
   ) {
     super(detail);
     this.name = "ApiError";
@@ -37,13 +41,21 @@ async function request<T>(
 
   if (!response.ok) {
     let detail = "Request failed";
+    let code: string | undefined;
     try {
       const body = await response.json();
-      detail = body.detail ?? detail;
+      // detail is usually a plain string, but some endpoints return a
+      // structured { code, message } so the UI can localize the message.
+      if (body.detail && typeof body.detail === "object") {
+        detail = body.detail.message ?? detail;
+        code = body.detail.code;
+      } else {
+        detail = body.detail ?? detail;
+      }
     } catch {
       // ignore parse errors
     }
-    throw new ApiError(response.status, detail);
+    throw new ApiError(response.status, detail, code);
   }
 
   const contentType = response.headers.get("content-type");

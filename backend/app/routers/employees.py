@@ -39,7 +39,7 @@ async def create_employee(
     except employee_service.InvalidReportsToError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
+            detail={"code": exc.code, "message": str(exc)},
         )
     except ValueError as exc:
         raise HTTPException(
@@ -130,7 +130,7 @@ async def update_employee(
     except employee_service.InvalidReportsToError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
+            detail={"code": exc.code, "message": str(exc)},
         )
     except ValueError as exc:
         raise HTTPException(

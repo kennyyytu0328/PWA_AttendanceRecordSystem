@@ -9,7 +9,7 @@ import { OrgScopingSection } from "@/components/admin/OrgScopingSection";
 import { ranksApi } from "@/lib/api/org-hierarchy";
 import { useEffect, useState } from "react";
 
-import { apiClient } from "@/lib/api";
+import { apiClient, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useTranslation } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -28,6 +28,27 @@ const ROLE_LEVELS: Readonly<Record<Role, number>> = {
 
 function hasMinimumRole(userRole: Role, requiredRole: Role): boolean {
   return ROLE_LEVELS[userRole] >= ROLE_LEVELS[requiredRole];
+}
+
+// Map stable backend error codes to translation keys so validation messages
+// (e.g. reports_to cycle) render in the active locale instead of raw English.
+const ERROR_CODE_KEYS: Readonly<Record<string, string>> = {
+  reports_to_self: "admin.errReportsToSelf",
+  reports_to_not_found: "admin.errReportsToNotFound",
+  reports_to_cycle: "admin.errReportsToCycle",
+};
+
+/** Resolve a thrown error to a user-facing message: a localized code if the
+ * backend supplied one, else the raw message, else the provided fallback. */
+function errorMessage(
+  err: unknown,
+  t: (key: string) => string,
+  fallback: string,
+): string {
+  if (err instanceof ApiError && err.code && ERROR_CODE_KEYS[err.code]) {
+    return t(ERROR_CODE_KEYS[err.code]);
+  }
+  return err instanceof Error ? err.message : fallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -102,7 +123,7 @@ function EmployeeManagementSection({ userRole, currentEmpId, departments }: { re
       setShowCreateForm(false);
       await fetchEmployees();
     } catch (err) {
-      const message = err instanceof Error ? err.message : t("admin.failedToCreate");
+      const message = errorMessage(err, t, t("admin.failedToCreate"));
       setFormMessage({ type: "error", text: message });
     }
   }
@@ -141,7 +162,7 @@ function EmployeeManagementSection({ userRole, currentEmpId, departments }: { re
       setEditingEmpId(null);
       await fetchEmployees();
     } catch (err) {
-      const message = err instanceof Error ? err.message : t("admin.failedToUpdate");
+      const message = errorMessage(err, t, t("admin.failedToUpdate"));
       setFormMessage({ type: "error", text: message });
     }
   }

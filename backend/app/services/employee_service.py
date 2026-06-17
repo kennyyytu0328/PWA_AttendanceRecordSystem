@@ -16,7 +16,15 @@ from app.utils.password import hash_password, verify_password
 
 class InvalidReportsToError(ValueError):
     """A reports_to assignment is invalid (self-reference, cycle, or the
-    target manager does not exist). Mapped to HTTP 400 by the router."""
+    target manager does not exist). Mapped to HTTP 400 by the router.
+
+    Carries a stable machine-readable ``code`` so the frontend can localize the
+    message instead of displaying the raw English ``detail``.
+    """
+
+    def __init__(self, message: str, code: str) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 async def _validate_reports_to(
@@ -28,17 +36,22 @@ async def _validate_reports_to(
     inside the employee's own subtree (i.e. already reports up to them).
     """
     if reports_to == emp_id:
-        raise InvalidReportsToError("An employee cannot report to themselves")
+        raise InvalidReportsToError(
+            "An employee cannot report to themselves", code="reports_to_self"
+        )
 
     manager = await repo.find_by_id(session, reports_to)
     if manager is None:
-        raise InvalidReportsToError(f"Manager '{reports_to}' not found")
+        raise InvalidReportsToError(
+            f"Manager '{reports_to}' not found", code="reports_to_not_found"
+        )
 
     subtree = await repo.get_subtree_emp_ids(session, emp_id)
     if reports_to in subtree:
         raise InvalidReportsToError(
             "reports_to would create a cycle "
-            "(the chosen manager is in this employee's subtree)"
+            "(the chosen manager is in this employee's subtree)",
+            code="reports_to_cycle",
         )
 
 
@@ -70,9 +83,14 @@ async def create_employee(
     # unknown manager are possible here (no cycle through descendants).
     if data.reports_to is not None:
         if data.reports_to == data.emp_id:
-            raise InvalidReportsToError("An employee cannot report to themselves")
+            raise InvalidReportsToError(
+                "An employee cannot report to themselves", code="reports_to_self"
+            )
         if await repo.find_by_id(session, data.reports_to) is None:
-            raise InvalidReportsToError(f"Manager '{data.reports_to}' not found")
+            raise InvalidReportsToError(
+                f"Manager '{data.reports_to}' not found",
+                code="reports_to_not_found",
+            )
 
     employee = Employee(
         emp_id=data.emp_id,
