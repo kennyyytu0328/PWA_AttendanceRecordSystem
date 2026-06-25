@@ -388,3 +388,85 @@ async def test_multiple_authenticators_per_employee(
 
     all_auths = await find_by_employee_id(db_session, "EMP209")
     assert len(all_auths) == 2
+
+
+# ---------- 11. verify_authentication_synced_passkey_zero_count ----------
+
+
+@patch("app.services.webauthn_service._verify_auth_resp")
+async def test_verify_authentication_synced_passkey_zero_count(
+    mock_verify: MagicMock,
+    db_session: AsyncSession,
+) -> None:
+    """A signCount of 0 (synced passkey) must NOT be flagged as a clone.
+
+    Per WebAuthn L2 §6.1.1 a signCount of 0 means the authenticator does not
+    implement a counter — the norm for Google Password Manager passkeys on
+    Android. Stored count is 0, response count is 0, and login must succeed.
+    """
+    await _create_employee(db_session, "EMP210")
+
+    from app.repositories.authenticator_repository import create_authenticator
+
+    await create_authenticator(
+        db_session,
+        Authenticator(
+            credential_id="cred_synced",
+            emp_id="EMP210",
+            public_key=b"\x55\x66",
+            sign_count=0,
+        ),
+    )
+
+    mock_verify.return_value = _FakeVerifiedAuthentication(
+        credential_id=b"cred_synced",
+        new_sign_count=0,
+    )
+
+    emp_id = await verify_authentication(
+        db_session, "cred_synced", {"id": "synced"}, b"auth-challenge"
+    )
+
+    assert emp_id == "EMP210"
+
+
+# ---------- 12. verify_authentication_zero_count_preserves_stored ----------
+
+
+@patch("app.services.webauthn_service._verify_auth_resp")
+async def test_verify_authentication_zero_count_preserves_stored(
+    mock_verify: MagicMock,
+    db_session: AsyncSession,
+) -> None:
+    """A 0 count must not lower a previously recorded non-zero high-water mark."""
+    await _create_employee(db_session, "EMP211")
+
+    from app.repositories.authenticator_repository import (
+        create_authenticator,
+        find_by_credential_id,
+    )
+
+    await create_authenticator(
+        db_session,
+        Authenticator(
+            credential_id="cred_hwm",
+            emp_id="EMP211",
+            public_key=b"\x77\x88",
+            sign_count=5,
+        ),
+    )
+
+    mock_verify.return_value = _FakeVerifiedAuthentication(
+        credential_id=b"cred_hwm",
+        new_sign_count=0,
+    )
+
+    emp_id = await verify_authentication(
+        db_session, "cred_hwm", {"id": "hwm"}, b"auth-challenge"
+    )
+
+    assert emp_id == "EMP211"
+
+    updated = await find_by_credential_id(db_session, "cred_hwm")
+    assert updated is not None
+    assert updated.sign_count == 5  # unchanged — a 0 count must not lower it

@@ -136,16 +136,24 @@ async def verify_authentication(
 
     new_sign_count = verification.new_sign_count
 
-    if new_sign_count <= stored.sign_count:
+    # WebAuthn L2 §6.1.1: a signCount of 0 means the authenticator does not
+    # implement a signature counter. This is the norm for synced passkeys
+    # (e.g. Google Password Manager on Android), which always report 0 — so a
+    # zero count must NOT be treated as a clone. Only flag a regression when a
+    # *counting* authenticator (non-zero count) fails to advance.
+    if new_sign_count != 0 and new_sign_count <= stored.sign_count:
         raise ValueError(
             f"potential authenticator clone detected: "
             f"new sign_count ({new_sign_count}) <= "
             f"current sign_count ({stored.sign_count})"
         )
 
-    await authenticator_repository.update_sign_count(
-        session, credential_id, new_sign_count
-    )
+    # Only ever raise the stored high-water mark; a 0 count from a synced
+    # passkey must not erase a previously recorded non-zero count.
+    if new_sign_count > stored.sign_count:
+        await authenticator_repository.update_sign_count(
+            session, credential_id, new_sign_count
+        )
 
     return stored.emp_id
 

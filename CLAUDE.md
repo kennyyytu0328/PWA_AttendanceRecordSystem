@@ -73,7 +73,7 @@ frontend/src/
 4. **No external SSO** — Employee ID + Password for onboarding; WebAuthn for daily use. No user enumeration (same error for wrong password and user not found).
 5. **Event sourcing** — All punches recorded with full metadata (GPS, accuracy, IP, work_mode).
 6. **Permission hierarchy** — ADMIN > HR > MANAGER > EMPLOYEE. Declarative frozenset-based permission matrix in `permission_service.py`.
-7. **WebAuthn clone detection** — Sign count monotonicity enforced. Regression raises ValueError.
+7. **WebAuthn clone detection** — Sign count monotonicity enforced for *counting* authenticators. A regression (non-zero `new_sign_count <= stored`) raises ValueError. **Exception (WebAuthn L2 §6.1.1):** a `new_sign_count` of 0 means the authenticator implements no counter — the norm for synced passkeys (Google Password Manager on Android) — so 0 is accepted, never flagged, and never lowers the stored high-water mark (see `webauthn_service.verify_authentication`). The stored count only ever advances (`new > stored`).
 8. **WorkMode enum values** — Backend uses `OFFICE` / `WFH` (not `WFO`). Frontend `WorkMode` type must match: `"OFFICE" | "WFH"`.
 9. **Date range queries** — Team logs, all logs, history, and reports endpoints use `start_date`/`end_date` parameters (not single `date`). Frontend pages include date range pickers.
 10. **WebAuthn credential ID encoding** — All credential IDs must use consistent base64url encoding throughout registration, storage, and authentication flows. The `loginWithToken` method in AuthContext handles token-based login after WebAuthn authentication.
