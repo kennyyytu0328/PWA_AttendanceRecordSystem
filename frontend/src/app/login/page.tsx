@@ -1,13 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Fingerprint } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
 import { useTranslation } from "@/lib/i18n";
 import { useWebAuthn } from "@/hooks/useWebAuthn";
 import { loginRequestSchema } from "@/lib/validators";
+import { getLastEmpId, saveLastEmpId } from "@/lib/lastEmpId";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 export default function LoginPage() {
@@ -21,6 +22,14 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFingerprintLoading, setIsFingerprintLoading] = useState(false);
+
+  // Prefill the employee ID used for the last successful login (client only).
+  useEffect(() => {
+    const lastEmpId = getLastEmpId();
+    if (lastEmpId) {
+      setEmpId(lastEmpId);
+    }
+  }, []);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -40,6 +49,7 @@ export default function LoginPage() {
     setIsSubmitting(true);
     try {
       await login(empId, password);
+      saveLastEmpId(empId);
       router.push("/dashboard");
     } catch (err) {
       const message =
@@ -67,6 +77,7 @@ export default function LoginPage() {
     try {
       const accessToken = await authenticate(empId);
       if (accessToken) {
+        saveLastEmpId(empId);
         loginWithToken(accessToken);
         router.push("/dashboard");
       }

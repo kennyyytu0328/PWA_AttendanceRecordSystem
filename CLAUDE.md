@@ -206,4 +206,4 @@ See `TODO.md` for detailed progress tracking.
 | 14 | UX Enhancements | — | In Progress |
 | 15 | Org Reporting Hierarchy (reports_to, rank, subtree-scoped authority, org-scoping toggle) | — | Done |
 
-**Current test count: 424 backend + 141 frontend = 565 passing + 33 Playwright E2E stubs** (1 pre-existing frontend flake in `monthly-override/page.test.tsx` — a `waitFor` timeout, unrelated to org-hierarchy work)
+**Current test count: 431 backend + 149 frontend = 580 passing + 33 Playwright E2E stubs** (1 pre-existing frontend flake in `monthly-override/page.test.tsx` — a `waitFor` timeout, unrelated to current work)
