@@ -12,7 +12,7 @@ from app.middleware.rate_limiter import (
     record_failed_attempt,
     reset_rate_limit,
 )
-from app.repositories import authenticator_repository
+from app.repositories import authenticator_repository, webauthn_challenge_repository
 from app.schemas.auth import ChangePasswordRequest, LoginRequest, TokenResponse
 from app.services import employee_service, webauthn_service
 
@@ -132,7 +132,9 @@ async def register_verify(
 ):
     """Verify a WebAuthn registration response and store the credential."""
     emp_id = user["sub"]
-    challenge = webauthn_service._challenges.get(emp_id)
+    challenge = await webauthn_challenge_repository.consume_challenge(
+        session, emp_id
+    )
     if challenge is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -193,7 +195,9 @@ async def authenticate_verify(
             detail="credential id and emp_id are required",
         )
 
-    challenge = webauthn_service._challenges.get(emp_id)
+    challenge = await webauthn_challenge_repository.consume_challenge(
+        session, emp_id
+    )
     if challenge is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

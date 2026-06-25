@@ -14,10 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.authenticator import Authenticator
-from app.repositories import authenticator_repository
-
-# In-memory challenge store (will migrate to Redis later)
-_challenges: dict[str, bytes] = {}
+from app.repositories import authenticator_repository, webauthn_challenge_repository
 
 
 async def generate_registration_options(
@@ -40,7 +37,9 @@ async def generate_registration_options(
         exclude_credentials=exclude_credentials if exclude_credentials else None,
     )
 
-    _challenges[emp_id] = options.challenge
+    await webauthn_challenge_repository.set_challenge(
+        session, emp_id, options.challenge
+    )
 
     return options_to_json(options)
 
@@ -99,7 +98,9 @@ async def generate_authentication_options(
         allow_credentials=allow_credentials,
     )
 
-    _challenges[emp_id] = options.challenge
+    await webauthn_challenge_repository.set_challenge(
+        session, emp_id, options.challenge
+    )
 
     return options_to_json(options)
 

@@ -7,6 +7,7 @@ from app.models.daily_attendance_summary import AttendanceStatus, DailyAttendanc
 from app.models.employee import Employee, Role
 from app.models.monthly_submission import MonthlySubmission
 from app.models.system_config import SystemConfig
+from app.models.webauthn_challenge import WebAuthnChallenge
 
 __all__ = [
     "AttendanceLog",
@@ -18,5 +19,6 @@ __all__ = [
     "MonthlySubmission",
     "Role",
     "SystemConfig",
+    "WebAuthnChallenge",
     "WorkMode",
 ]

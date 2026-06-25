@@ -58,7 +58,11 @@ async def test_webauthn_login_sets_iat(
     await create_employee(db_session, employee)
 
     # Seed a fake pending challenge so the handler won't bail early
-    webauthn_service._challenges["IAT002"] = b"\x00" * 32
+    from app.repositories import webauthn_challenge_repository
+
+    await webauthn_challenge_repository.set_challenge(
+        db_session, "IAT002", b"\x00" * 32
+    )
 
     # Patch verify_authentication to return the emp_id without real WebAuthn
     async def fake_verify(
