@@ -145,6 +145,10 @@ function EmployeeManagementSection({ userRole, currentEmpId, departments }: { re
     if (role) body.role = role;
     if (shiftStart) body.shift_start_time = shiftStart;
     if (shiftEnd) body.shift_end_time = shiftEnd;
+    // Optional password reset: only send when the HR/ADMIN actually typed a new
+    // value. Blank means "leave the existing password untouched".
+    const newPassword = (fd.get("password") as string) || "";
+    if (newPassword) body.password = newPassword;
     // reports_to / rank are always present in the form: empty string means
     // "un-assign" → send null (clears the manager / rank); a value sets it.
     if (fd.has("reports_to")) {
@@ -386,6 +390,18 @@ function EmployeeManagementSection({ userRole, currentEmpId, departments }: { re
                         <div>
                           <label className="text-xs text-gray-500">{t("admin.editShiftEnd")}</label>
                           <input name="shift_end_time" type="time" defaultValue={emp.shift_end_time} className="block rounded border border-gray-300 px-2 py-1 text-sm" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500" title={t("admin.editPasswordHint")}>{t("admin.editPassword")}</label>
+                          <input
+                            name="password"
+                            type="password"
+                            autoComplete="new-password"
+                            minLength={6}
+                            placeholder={t("admin.editPasswordPlaceholder")}
+                            className="block w-36 rounded border border-gray-300 px-2 py-1 text-sm"
+                          />
+                          <p className="mt-0.5 max-w-[12rem] text-[11px] leading-tight text-gray-400">{t("admin.editPasswordHint")}</p>
                         </div>
                         <div>
                           <label className="text-xs text-gray-500" title={t("admin.reportsToHint")}>{t("admin.reportsTo")}</label>

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Employee, Role } from "@/types";
@@ -144,6 +144,58 @@ describe("AdminPage employee delete button", () => {
 
     expect(screen.queryByTitle("admin.deleteEmployee")).not.toBeInTheDocument();
     expect(screen.getByTitle("admin.terminateEmployee")).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: employee edit — password reset field
+// ---------------------------------------------------------------------------
+
+describe("AdminPage employee password reset", () => {
+  async function openEditForm(): Promise<HTMLFormElement> {
+    render(<AdminPage />);
+    await waitFor(() => {
+      expect(screen.getByText("EMP001")).toBeInTheDocument();
+    });
+    // Click the edit (pencil) button — title="common.edit"
+    fireEvent.click(screen.getByTitle("common.edit"));
+    const pwd = await screen.findByPlaceholderText(
+      "admin.editPasswordPlaceholder",
+    );
+    // Scope assertions/clicks to the edit form (the page has other "save"
+    // buttons in the office-location / grace-period sections).
+    return pwd.closest("form") as HTMLFormElement;
+  }
+
+  it("includes password in the PUT body when a new value is entered", async () => {
+    mockPut.mockResolvedValue({});
+    const form = await openEditForm();
+
+    fireEvent.change(
+      within(form).getByPlaceholderText("admin.editPasswordPlaceholder"),
+      { target: { value: "Temp-Pass-2026!" } },
+    );
+    fireEvent.click(within(form).getByText("common.save"));
+
+    await waitFor(() => {
+      expect(mockPut).toHaveBeenCalledWith(
+        "/api/employees/EMP001",
+        expect.objectContaining({ password: "Temp-Pass-2026!" }),
+      );
+    });
+  });
+
+  it("omits password from the PUT body when left blank", async () => {
+    mockPut.mockResolvedValue({});
+    const form = await openEditForm();
+
+    fireEvent.click(within(form).getByText("common.save"));
+
+    await waitFor(() => {
+      expect(mockPut).toHaveBeenCalled();
+    });
+    const body = mockPut.mock.calls[0][1] as Record<string, unknown>;
+    expect(body).not.toHaveProperty("password");
   });
 });
 
