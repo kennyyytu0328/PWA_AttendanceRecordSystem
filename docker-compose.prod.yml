@@ -31,6 +31,10 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
+      # The app assumes server-local time == Taiwan time (naive datetime.now()
+      # for live punches, shift-time comparisons). Containers default to UTC,
+      # which shifts every live punch −8h. Pin all services to Asia/Taipei.
+      TZ: Asia/Taipei
       POSTGRES_USER: ${POSTGRES_USER:-attendance_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: ${POSTGRES_DB:-attendance}
@@ -50,6 +54,12 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    environment:
+      # CRITICAL: live punches use naive datetime.now() and tardiness is judged
+      # against Taiwan wall-clock shift times. Without this the container runs
+      # in UTC and every punch is stored/displayed 8 hours early (08:53→00:53).
+      # Requires tzdata in the image (installed in backend/Dockerfile).
+      TZ: Asia/Taipei
     env_file:
       - ./backend/.env
     depends_on:
@@ -86,6 +96,11 @@ services:
         # blank when deploying at the domain root.
         NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH-}
     restart: unless-stopped
+    environment:
+      # Keep any server-rendered dates in Taiwan time (Node bundles its own tz
+      # data, so no extra package needed here). Client-side rendering already
+      # uses the browser's timezone.
+      TZ: Asia/Taipei
     depends_on:
       - backend
     # Published on the loopback interface only — host nginx proxies to
