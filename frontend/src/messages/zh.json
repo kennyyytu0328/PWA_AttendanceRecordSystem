@@ -241,6 +241,7 @@
     "noRecords": "找不到團隊考勤紀錄",
     "adjustDate": "請嘗試選擇其他日期",
     "empId": "員工編號",
+    "name": "姓名",
     "time": "時間",
     "workMode": "工作模式",
     "location": "位置",

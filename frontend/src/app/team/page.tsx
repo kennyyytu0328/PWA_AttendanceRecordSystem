@@ -52,6 +52,9 @@ export default function TeamPage() {
 
   const [logs, setLogs] = useState<readonly AttendanceLog[]>([]);
   const [summaryMap, setSummaryMap] = useState<Readonly<Record<string, { status: string; reason?: string }>>>({});
+  // emp_id -> display name, sourced from /api/reports/daily (raw logs carry no
+  // name). Lets the table show a recognizable name next to the opaque emp_id.
+  const [nameMap, setNameMap] = useState<Readonly<Record<string, string>>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [startDate, setStartDate] = useState(todayString);
@@ -69,16 +72,19 @@ export default function TeamPage() {
             : `/api/attendance/team?${params.toString()}`;
         const [data, summaries] = await Promise.all([
           apiClient.get<AttendanceLog[]>(endpoint),
-          apiClient.get<{ emp_id: string; date: string; status: string; reason?: string }[]>(
+          apiClient.get<{ emp_id: string; name?: string; date: string; status: string; reason?: string }[]>(
             `/api/reports/daily?start_date=${start}&end_date=${end}&submission_filter=all`,
-          ).catch(() => [] as { emp_id: string; date: string; status: string; reason?: string }[]),
+          ).catch(() => [] as { emp_id: string; name?: string; date: string; status: string; reason?: string }[]),
         ]);
         setLogs(data);
         const map: Record<string, { status: string; reason?: string }> = {};
+        const names: Record<string, string> = {};
         for (const s of summaries) {
           map[`${s.emp_id}_${s.date}`] = { status: s.status, reason: s.reason };
+          if (s.name) names[s.emp_id] = s.name;
         }
         setSummaryMap(map);
+        setNameMap(names);
       } catch (err) {
         const message =
           err instanceof Error ? err.message : t("team.failedToLoad");
@@ -198,10 +204,11 @@ export default function TeamPage() {
         {/* Table */}
         {!isLoading && !error && logs.length > 0 && (
           <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
-            <table className="w-full min-w-[680px] text-left text-sm">
+            <table className="w-full min-w-[760px] text-left text-sm">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className="px-4 py-3 font-medium text-gray-600">{t("team.empId")}</th>
+                  <th className="px-4 py-3 font-medium text-gray-600">{t("team.name")}</th>
                   <th className="px-4 py-3 font-medium text-gray-600">{t("team.time")}</th>
                   <th className="px-4 py-3 font-medium text-gray-600">{t("team.workMode")}</th>
                   <th className="px-4 py-3 font-medium text-gray-600">{t("team.location")}</th>
@@ -223,6 +230,7 @@ export default function TeamPage() {
                     className={`border-b border-gray-100 last:border-b-0 hover:bg-gray-50${isFirstOfGroup && index > 0 ? " border-t-2 border-t-gray-300" : ""}`}
                   >
                     <td className="px-4 py-3 font-mono text-xs text-gray-700">{isFirstOfGroup ? log.emp_id : ""}</td>
+                    <td className="px-4 py-3 text-gray-700">{isFirstOfGroup ? (nameMap[log.emp_id] ?? "") : ""}</td>
                     <td className="px-4 py-3 text-gray-700">{formatDateTime(log.timestamp)}</td>
                     <td className="px-4 py-3">
                       <WorkModeBadge mode={log.work_mode} />

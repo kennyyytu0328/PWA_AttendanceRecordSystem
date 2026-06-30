@@ -241,6 +241,7 @@
     "noRecords": "No team attendance records found",
     "adjustDate": "Try selecting a different date",
     "empId": "Employee ID",
+    "name": "Name",
     "time": "Time",
     "workMode": "Work Mode",
     "location": "Location",
