@@ -215,6 +215,28 @@ print(asyncio.run(asyncpg.connect(os.environ['DATABASE_URL'].replace('+asyncpg',
 
 If this errors with "password authentication failed", the password in `backend/.env` → `DATABASE_URL` doesn't match `POSTGRES_PASSWORD` in the root `.env` (or the volume was first-initialized with a different password — see §2.5).
 
+### 4.1 Verify the container timezone (Asia/Taipei)
+
+**This is mandatory, not optional.** The app stores live punches with naive
+`datetime.now()` and judges tardiness against Taiwan wall-clock shift times, so
+the container clock **must** be Taiwan time. Containers default to UTC, which
+silently shifts every live punch −8h (an 08:53 punch is stored and displayed as
+00:53). All three services are pinned via `TZ: Asia/Taipei` in
+`docker-compose.prod.yml`, and the backend slim image installs `tzdata`
+(without it glibc ignores `TZ` and falls back to UTC).
+
+```bash
+docker compose -f docker-compose.prod.yml exec backend date
+# → must show CST and +0800, e.g. "Tue Jun 30 09:05:19 CST 2026"
+# If it shows UTC, the rebuild didn't pick up tzdata — rebuild with --build.
+```
+
+> **Existing data is not retroactively fixed.** Setting the timezone only
+> affects punches recorded *after* the restart. Any live punches recorded while
+> the container was on UTC remain −8h off and must be corrected per-day via the
+> Monthly Punch Override page; their daily summaries (and LATE/EARLY_LEAVE
+> status) self-heal on the next read once the underlying raw punch time is right.
+
 ---
 
 ## 5. Run database migrations
@@ -587,6 +609,7 @@ From your dev machine, push to **both** `origin` (GitHub) and `bitbucket`. The s
 - [ ] Initial ADMIN password changed away from the bootstrap value
 - [ ] Nightly `pg_dump` of `attendance` is installed and at least one backup has run successfully
 - [ ] `docker compose ps` shows all services healthy after a reboot (set `restart: unless-stopped` is already in the template)
+- [ ] `docker compose exec backend date` shows **CST / +0800** (Taiwan time), not UTC — see §4.1
 
 ---
 
@@ -602,3 +625,4 @@ From your dev machine, push to **both** `origin` (GitHub) and `bitbucket`. The s
 | Backend can't connect: "password authentication failed" | `DATABASE_URL` password ≠ `POSTGRES_PASSWORD` in root `.env`, or the `pgdata` volume was first-initialized with an older password | Make the two files match; if the volume already initialized with a different password, `ALTER USER attendance_user WITH PASSWORD '...'` inside `docker compose exec db psql -U attendance_user attendance` (or, if the DB is still empty, `docker compose down && docker volume rm <project>_pgdata` and start over) |
 | Backend can't connect: "Connection refused" to `db:5432` | `db` container not healthy yet, or removed from the compose file | `docker compose -f docker-compose.prod.yml ps` — `db` must be `Up (healthy)`; check `docker compose logs db` |
 | Taiwan calendar shows "not loaded" | CDN fetch blocked by firewall | Curl test from inside the backend container: `docker compose exec backend curl -I https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/2026.json` |
+| Live punches recorded 8 hours early (08:53 shows as 00:53); tardiness status wrong | Container running in UTC instead of Taiwan time (missing `TZ` or `tzdata`) | Confirm `docker compose exec backend date` shows `+0800`; if not, ensure `TZ: Asia/Taipei` is set and rebuild so `tzdata` is installed (`up -d --build backend`). See §4.1. Existing −8h rows must be fixed via Monthly Punch Override. |
