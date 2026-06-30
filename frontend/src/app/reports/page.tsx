@@ -305,6 +305,7 @@ function DailyReportSection({ isHr }: { readonly isHr: boolean }) {
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
                 <th className="px-4 py-3 font-medium text-gray-600">{t("reports.colEmpId")}</th>
+                <th className="px-4 py-3 font-medium text-gray-600">{t("reports.colName")}</th>
                 <th className="px-4 py-3 font-medium text-gray-600">{t("reports.colDate")}</th>
                 <th className="px-4 py-3 font-medium text-gray-600">{t("reports.colFirstIn")}</th>
                 <th className="px-4 py-3 font-medium text-gray-600">{t("reports.colLastOut")}</th>
@@ -319,6 +320,7 @@ function DailyReportSection({ isHr }: { readonly isHr: boolean }) {
               {data.map((row) => (
                 <tr key={row.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50">
                   <td className="px-4 py-3 font-mono text-xs text-gray-700">{row.emp_id}</td>
+                  <td className="px-4 py-3 text-gray-700">{row.name ?? "-"}</td>
                   <td className="px-4 py-3 text-gray-700">{row.date}</td>
                   <td className="px-4 py-3 text-gray-700">{formatTime(row.first_clock_in) ?? t("reports.noRecord")}</td>
                   <td className="px-4 py-3 text-gray-700">

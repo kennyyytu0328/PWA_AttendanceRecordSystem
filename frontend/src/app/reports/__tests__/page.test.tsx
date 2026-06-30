@@ -65,6 +65,7 @@ import ReportsPage from "@/app/reports/page";
 interface MockRow {
   id: number;
   emp_id: string;
+  name: string;
   date: string;
   first_clock_in: string | null;
   last_clock_out: string | null;
@@ -79,6 +80,7 @@ function makeRow(overrides: Partial<MockRow> = {}): MockRow {
   return {
     id: 1,
     emp_id: "EMP001",
+    name: "Alice Wang",
     date: "2026-05-14",
     first_clock_in: "2026-05-14T01:00:00Z",
     last_clock_out: "2026-05-14T10:00:00Z",
@@ -108,6 +110,15 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("ReportsPage – new columns and submission filter", () => {
+  it("renders the employee name column from the daily report rows", async () => {
+    render(<ReportsPage />);
+    await waitFor(() => expect(mockGet).toHaveBeenCalled());
+
+    // Name column header + the value from makeRow()
+    expect(await screen.findByText("reports.colName")).toBeInTheDocument();
+    expect(screen.getByText("Alice Wang")).toBeInTheDocument();
+  });
+
   it("renders shift_time, remark, reason, and submission_status columns from API rows", async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.startsWith("/api/employees")) return Promise.resolve([]);

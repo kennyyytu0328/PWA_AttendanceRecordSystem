@@ -265,6 +265,7 @@
     "noData": "找不到報表資料",
     "adjustFilters": "請嘗試選擇其他日期或篩選條件",
     "colEmpId": "員工編號",
+    "colName": "姓名",
     "colDate": "日期",
     "colFirstIn": "首次簽到",
     "colLastOut": "最後簽退",

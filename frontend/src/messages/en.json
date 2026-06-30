@@ -265,6 +265,7 @@
     "noData": "No report data found",
     "adjustFilters": "Try selecting a different date or filter",
     "colEmpId": "Employee ID",
+    "colName": "Name",
     "colDate": "Date",
     "colFirstIn": "First In",
     "colLastOut": "Last Out",

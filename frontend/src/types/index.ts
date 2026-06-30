@@ -109,6 +109,8 @@ export interface PunchResponse {
 export interface DailyAttendanceSummary {
   readonly id: number;
   readonly emp_id: string;
+  readonly name?: string;
+  readonly department?: string;
   readonly date: string;
   readonly first_clock_in: string | null;
   readonly last_clock_out: string | null;
