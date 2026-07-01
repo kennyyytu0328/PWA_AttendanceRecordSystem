@@ -49,7 +49,13 @@ new, isolated backup import path.
   subnet the dev config whitelists via `allowedDevOrigins: 192.168.2.*`, so a door PC →
   dev-machine push can be tested locally on the LAN.)
 - `card_serial` (field 5) is the **card UID** read from the physical NFC card
-  (informational only; the import does not use it).
+  (informational only; the import does not use it). Printed card format is 站碼:卡號
+  (e.g. `02400:09483`); the in-file `card_serial` is the decimal serial (e.g.
+  `5717003342`) — same card, two representations.
+- **Join key confirmed:** field 3 in the real SOYAL export is natively our `emp_id`
+  (e.g. `F1000118`) — SOYAL 701's user-number is set to the emp_id — so **no mapping
+  layer is needed**. Test card UID **`02400:09483`** is registered to a real employee
+  for end-to-end verification.
 
 ---
 
