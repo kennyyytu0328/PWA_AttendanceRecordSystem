@@ -167,9 +167,10 @@ corrects it via the existing **Monthly Punch Override** — same safety valve as
 ## 7. Idempotency (safe re-import)
 
 The month file is re-sent daily with growing content. Because "existing punches"
-includes prior NFC-filled logs, an already-filled side is skipped on re-run. Inserts
-are additionally deduped on `emp_id + exact timestamp`. **Running the import N times
-= same result as running it once.** Manual/HR overrides always win (override marks
+includes prior NFC-filled logs, an already-filled side is skipped on re-run — **a
+filled side is never re-filled**, which is the whole idempotency mechanism (no separate
+timestamp-dedup needed). **Running the import N times = same result as running it
+once.** Manual/HR overrides always win (override marks
 prior logs `is_overridden=True`; NFC then sees the override logs as the existing
 punches and skips).
 
@@ -220,7 +221,7 @@ routers; async; type-hinted; immutable result types).
   "filled_in": 0,
   "filled_out": 0,
   "skipped_already_punched": 0,
-  "skipped_already_imported": 0,
+  "skipped_terminated": [],
   "unknown_emp_ids": [],
   "parse_errors": [],
   "affected_days": []
