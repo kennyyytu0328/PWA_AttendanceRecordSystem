@@ -31,6 +31,7 @@ new, isolated backup import path.
 
 | Item | Value |
 |------|-------|
+| Door-control software | **SOYAL 701 Client/Server** (Taiwanese access-control system) |
 | Door-PC hostname | `DESKTOP-MMGK6PJ` |
 | Windows user | `ltre5` |
 | File folder | `C:\Users\ltre5\OneDrive\桌面\門禁\` |
@@ -38,12 +39,17 @@ new, isolated backup import path.
 | File generated | ~**00:10 every day** (the door system writes/refreshes the month file) |
 | Encoding | **CP950 / Big5** (Traditional Chinese) |
 | Offices / doors | **2 offices**, each door has its own door number (`1`, `2`) |
+| Door-PC LAN IP | `192.168.2.165` (Wi-Fi) — **DHCP dynamic, may change** — on the `192.168.2.0/24` office LAN |
 | Network | Door PC sits on the **office LAN** (private IP behind NAT). Prod (`go2fresh-1`) is **remote** relative to that LAN. |
 
-**Deployment parameters to confirm before go-live** (non-blocking for design):
-- Door PC LAN IP (only relevant if we ever debug locally; push is outbound so not strictly needed).
-- Door-control software brand/model (for the reference record).
-- Meaning of `card_serial` field (informational only; not used by the import).
+**Deployment notes (confirmed 2026-07-01):**
+- The door PC's IP is **DHCP-assigned and may change** — which is exactly why the
+  push-agent design does not depend on it. The door PC only needs outbound internet to
+  reach prod; its own address is irrelevant. (It sits on `192.168.2.0/24`, the same
+  subnet the dev config whitelists via `allowedDevOrigins: 192.168.2.*`, so a door PC →
+  dev-machine push can be tested locally on the LAN.)
+- `card_serial` (field 5) is the **card UID** read from the physical NFC card
+  (informational only; the import does not use it).
 
 ---
 
@@ -61,7 +67,7 @@ date, time, emp_id, door_no, card_serial, name
 | 2 | time | `072437` | `HHMMSS` (24h) | ✅ |
 | 3 | emp_id | `F1000118` | matches `employees.emp_id` | ✅ (join key) |
 | 4 | door_no | `1` / `2` | office/door number | ℹ️ logged only |
-| 5 | card_serial | `5717003342` | physical card serial | ℹ️ logged only |
+| 5 | card_serial | `5717003342` | physical **card UID** (as read by SOYAL) | ℹ️ logged only |
 | 6 | name | `王小明` | employee name, **CP950** | ℹ️ logged only |
 
 Sample raw lines (names appear as mojibake when the file is read as UTF-8 — this is
