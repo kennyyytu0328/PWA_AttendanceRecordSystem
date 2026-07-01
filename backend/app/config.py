@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # generate OpenAPI/Swagger URLs under the prefix. Empty in dev.
     root_path: str = ""
 
+    # NFC door-tap import (SOYAL 701 push agent). Machine-to-machine shared
+    # secret checked on POST /api/nfc/import. Empty ("") disables the endpoint.
+    nfc_import_api_key: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
