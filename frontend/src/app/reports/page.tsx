@@ -7,6 +7,7 @@ import { BackButton } from "@/components/BackButton";
 
 import { apiClient } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { localToday } from "@/lib/date";
 import { buildExportFilename } from "@/lib/exportFilename";
 import { useTranslation } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -19,8 +20,10 @@ import type { DailyAttendanceSummary, Employee, Role, SubmissionFilter } from "@
 const MANAGER_ROLES: readonly Role[] = ["MANAGER", "HR", "ADMIN"];
 const HR_ROLES: readonly Role[] = ["HR", "ADMIN"];
 
+// Local calendar date — new Date().toISOString() resolves to *yesterday* when
+// the page is opened before 08:00 Taipei (08:00 Taipei == 00:00 UTC).
 function todayString(): string {
-  return new Date().toISOString().split("T")[0];
+  return localToday();
 }
 
 function truncate(value: string | null | undefined, max = 50): string {

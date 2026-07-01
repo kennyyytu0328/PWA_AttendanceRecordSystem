@@ -7,6 +7,7 @@ import { BackButton } from "@/components/BackButton";
 
 import { apiClient } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { isoDateOnly, localToday } from "@/lib/date";
 import { useTranslation } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import type { AttendanceLog, Role } from "@/types";
@@ -31,12 +32,16 @@ function formatDateTime(iso: string): string {
   return `${date} ${time}`;
 }
 
+// Both the log timestamp and the daily-summary `date` are naive Taiwan values,
+// so key them on the literal calendar date. Using new Date(iso).toISOString()
+// here rolled pre-08:00 punches back a day (08:00 Taipei == 00:00 UTC), which
+// broke the emp_id_date lookup and left the status column blank.
 function todayString(): string {
-  return new Date().toISOString().split("T")[0];
+  return localToday();
 }
 
 function formatDate(iso: string): string {
-  return new Date(iso).toISOString().split("T")[0];
+  return isoDateOnly(iso);
 }
 
 // ---------------------------------------------------------------------------

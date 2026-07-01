@@ -7,6 +7,7 @@ import { BackButton } from "@/components/BackButton";
 
 import { apiClient } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { isoDateOnly, localDateString } from "@/lib/date";
 import { useTranslation } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import type { AttendanceLog, DailyAttendanceSummary } from "@/types";
@@ -15,9 +16,11 @@ import type { AttendanceLog, DailyAttendanceSummary } from "@/types";
 // Helpers
 // ---------------------------------------------------------------------------
 
+// Literal calendar date of the (naive Taiwan) timestamp. Using toISOString()
+// rolled pre-08:00 punches back a day, misgrouping rows and missing the
+// summary-status lookup keyed by the summary's date.
 function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toISOString().split("T")[0];
+  return isoDateOnly(iso);
 }
 
 function formatTime(iso: string): string {
@@ -58,14 +61,14 @@ export default function AttendancePage() {
     const day = now.getDay();
     const monday = new Date(now);
     monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
-    return monday.toISOString().split("T")[0];
+    return localDateString(monday);
   });
   const [endDate, setEndDate] = useState(() => {
     const now = new Date();
     const day = now.getDay();
     const sunday = new Date(now);
     sunday.setDate(now.getDate() + (day === 0 ? 0 : 7 - day));
-    return sunday.toISOString().split("T")[0];
+    return localDateString(sunday);
   });
 
   const fetchLogs = useCallback(async (start: string, end: string) => {

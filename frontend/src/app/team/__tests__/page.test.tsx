@@ -3,6 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Role } from "@/types";
 
+// Pin to Taipei (UTC+8) so the pre-08:00 date-rollback bug is exercised
+// deterministically regardless of the CI host timezone. 08:00 Taipei == 00:00
+// UTC, so any punch before 08:00 is where new Date(iso).toISOString() rolls the
+// calendar date back a day.
+process.env.TZ = "Asia/Taipei";
+
 // ---------------------------------------------------------------------------
 // Mocks (hoisted)
 // ---------------------------------------------------------------------------
@@ -81,5 +87,41 @@ describe("TeamPage name column", () => {
       expect(screen.getByText("EMP001")).toBeInTheDocument();
     });
     expect(screen.getByText("Alice Wang")).toBeInTheDocument();
+  });
+});
+
+describe("TeamPage status badge for pre-08:00 punches", () => {
+  it("renders the daily status for a punch before 08:00 (no UTC date rollback)", async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.startsWith("/api/attendance/")) {
+        return Promise.resolve([
+          {
+            id: 42,
+            emp_id: "EMP007",
+            timestamp: "2026-07-01T07:41:00",
+            work_mode: "OFFICE" as const,
+            latitude: 24.7754,
+            longitude: 121.0448,
+            accuracy: 10,
+            is_overridden: false,
+          },
+        ]);
+      }
+      if (url.startsWith("/api/reports/daily")) {
+        return Promise.resolve([
+          { emp_id: "EMP007", name: "Chien", date: "2026-07-01", status: "NORMAL" },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    render(<TeamPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("EMP007")).toBeInTheDocument();
+    });
+    // Before the fix, formatDate() rolled 07:41 back to 2026-06-30, so the
+    // emp_id_date key missed the 2026-07-01 summary and the badge was blank.
+    expect(screen.getByText("attendance.statusNormal")).toBeInTheDocument();
   });
 });
