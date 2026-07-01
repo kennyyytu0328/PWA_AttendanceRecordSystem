@@ -137,14 +137,95 @@ def _make_nfc_log(emp_id: str, ts: datetime.datetime) -> AttendanceLog:
     )
 
 
+async def _skip_group(
+    session: AsyncSession,
+    employee_cache: dict[str, Employee | None],
+    emp_id: str,
+    date: datetime.date,
+    unknown_emp_ids: list[str],
+    skipped_terminated: list[str],
+) -> bool:
+    """Resolve the (cached) employee and decide whether the group is skipped.
+
+    Records ``emp_id`` (deduped) into whichever tracking list applies —
+    ``unknown_emp_ids`` when the emp_id doesn't exist, ``skipped_terminated``
+    when the employee was terminated on/before ``date``. Returns True when
+    the caller should skip the (emp_id, date) group, False to proceed.
+    """
+    if emp_id not in employee_cache:
+        employee_cache[emp_id] = await employee_repository.find_by_id(session, emp_id)
+    employee = employee_cache[emp_id]
+
+    if employee is None:
+        if emp_id not in unknown_emp_ids:
+            unknown_emp_ids.append(emp_id)
+        return True
+
+    if employee.terminated_at is not None and employee.terminated_at.date() <= date:
+        if emp_id not in skipped_terminated:
+            skipped_terminated.append(emp_id)
+        return True
+
+    return False
+
+
+async def _load_punch_state(
+    session: AsyncSession, emp_id: str, date: datetime.date
+) -> tuple[bool, bool, datetime.datetime | None]:
+    """Load and classify a day's existing non-overridden punches.
+
+    Returns ``(has_in, has_out, effective_in)`` where ``effective_in`` is the
+    earliest existing timestamp (the clock-out fill guard threshold), or
+    ``None`` when there is no existing clock-in.
+    """
+    existing = await attendance_repository.find_by_employee_and_date(
+        session, emp_id, date
+    )
+    non_overridden = [log for log in existing if not log.is_overridden]
+    has_in = len(non_overridden) >= 1
+    has_out = len(non_overridden) >= 2
+    effective_in = min((log.timestamp for log in non_overridden), default=None)
+    return has_in, has_out, effective_in
+
+
+async def _fill_group_gaps(
+    session: AsyncSession,
+    emp_id: str,
+    day_taps: list[NfcTap],
+    has_in: bool,
+    has_out: bool,
+    effective_in: datetime.datetime | None,
+) -> tuple[int, int]:
+    """Create the NFC log(s) that fill the missing side(s) of one day.
+
+    Fills clock-in from the earliest tap when absent, and clock-out from the
+    latest tap when absent AND later than the effective clock-in (guards a
+    lone stray tap from being read as both). Returns 0/1 (filled_in, filled_out)
+    so the driver keeps the running totals and triggers summary regen.
+    """
+    day_taps.sort(key=lambda tap: tap.timestamp)
+    earliest = day_taps[0].timestamp
+    latest = day_taps[-1].timestamp
+
+    filled_in = 0
+    if not has_in:
+        await attendance_repository.create_log(session, _make_nfc_log(emp_id, earliest))
+        filled_in = 1
+        effective_in = earliest
+
+    filled_out = 0
+    if not has_out and effective_in is not None and latest > effective_in:
+        await attendance_repository.create_log(session, _make_nfc_log(emp_id, latest))
+        filled_out = 1
+
+    return filled_in, filled_out
+
+
 async def import_nfc_file(session: AsyncSession, raw: bytes) -> NfcImportResult:
     """Decode, parse, and per-side gap-fill a SOYAL door-tap export."""
     taps, parse_errors = parse_rows(decode_file(raw))
     groups = _group_by_emp_date(taps)
-
-    filled_in = 0
-    filled_out = 0
-    skipped_already_punched = 0
+    filled_in = filled_out = skipped_already_punched = 0
     skipped_terminated: list[str] = []
     unknown_emp_ids: list[str] = []
     affected_days: list[str] = []
@@ -156,58 +237,23 @@ async def import_nfc_file(session: AsyncSession, raw: bytes) -> NfcImportResult:
         for year in {date.year for (_emp, date) in groups}
     }
     employee_cache: dict[str, Employee | None] = {}
-
     for (emp_id, date), day_taps in sorted(
         groups.items(), key=lambda kv: (kv[0][1], kv[0][0])
     ):
-        if emp_id not in employee_cache:
-            employee_cache[emp_id] = await employee_repository.find_by_id(
-                session, emp_id
-            )
-        employee = employee_cache[emp_id]
-        if employee is None:
-            if emp_id not in unknown_emp_ids:
-                unknown_emp_ids.append(emp_id)
+        if await _skip_group(
+            session, employee_cache, emp_id, date, unknown_emp_ids, skipped_terminated
+        ):
             continue
-        if employee.terminated_at is not None and employee.terminated_at.date() <= date:
-            if emp_id not in skipped_terminated:
-                skipped_terminated.append(emp_id)
-            continue
-
-        existing = await attendance_repository.find_by_employee_and_date(
-            session, emp_id, date
-        )
-        non_overridden = [log for log in existing if not log.is_overridden]
-        has_in = len(non_overridden) >= 1
-        has_out = len(non_overridden) >= 2
-
+        has_in, has_out, effective_in = await _load_punch_state(session, emp_id, date)
         if has_in and has_out:
             skipped_already_punched += 1
             continue
-
-        day_taps.sort(key=lambda tap: tap.timestamp)
-        earliest = day_taps[0].timestamp
-        latest = day_taps[-1].timestamp
-        did_fill = False
-
-        if has_in:
-            effective_in = min(log.timestamp for log in non_overridden)
-        else:
-            await attendance_repository.create_log(
-                session, _make_nfc_log(emp_id, earliest)
-            )
-            filled_in += 1
-            did_fill = True
-            effective_in = earliest
-
-        if not has_out and latest > effective_in:
-            await attendance_repository.create_log(
-                session, _make_nfc_log(emp_id, latest)
-            )
-            filled_out += 1
-            did_fill = True
-
-        if did_fill:
+        group_filled_in, group_filled_out = await _fill_group_gaps(
+            session, emp_id, day_taps, has_in, has_out, effective_in
+        )
+        filled_in += group_filled_in
+        filled_out += group_filled_out
+        if group_filled_in or group_filled_out:
             day_kind = classify_indexed_date_kind(calendars[date.year], date)
             await reporting_service.generate_daily_summary(
                 session, emp_id, date, day_kind=day_kind
