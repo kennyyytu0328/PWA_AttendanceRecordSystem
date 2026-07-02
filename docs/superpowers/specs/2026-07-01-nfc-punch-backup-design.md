@@ -2,7 +2,7 @@
 
 - **Date:** 2026-07-01
 - **Branch:** `feature/nfc-punch-backup`
-- **Status:** Approved design (pre-implementation)
+- **Status:** **Deployed to production 2026-07-03** — backend endpoint live, door-PC agent installed and verified end-to-end (see §11)
 - **Author:** Kenny Tu (with Claude)
 
 This document is both the **design spec** for the feature and the permanent
@@ -243,6 +243,14 @@ table is a v2 nice-to-have.)*
   month**, also send **last month's** file (to catch the final day's late taps).
   Retry on network failure; append a local log line.
 - Schedule: **daily ~00:20** (after the 00:10 file generation).
+
+**As deployed (2026-07-03):** installed at `C:\Users\ltre5\nfc-agent\`
+(`push-nfc.ps1` + curl 8.21.0 from curl.se — LibreSSL backend for TLS 1.3, which
+Windows 10's schannel lacks). Scheduled task `GoGoFresh NFC Push` (daily 00:20,
+`/RU SYSTEM`) registered; `NFC_IMPORT_API_KEY` set machine-wide. Verified: manual
+run `OK 202607.txt: in=0 out=1 skipped=7`, then a Task-Scheduler-triggered rerun
+`in=0 out=0 skipped=8` (idempotent). The door PC is remotely manageable over SSH —
+operational runbook in `tools/nfc-agent/README.md`.
 
 ---
 

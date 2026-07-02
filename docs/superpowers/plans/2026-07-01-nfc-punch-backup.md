@@ -1,5 +1,7 @@
 # NFC Door-Tap Gap-Fill Backup Implementation Plan
 
+> **✅ EXECUTED & DEPLOYED 2026-07-03.** All tasks completed and the agent is live on the door PC. This document is kept as a historical record — some details below were superseded during deployment (real install path is `C:\Users\ltre5\nfc-agent\`, not `C:\nfc-agent\`; the task runs `/RU SYSTEM`; curl.se's build ships LibreSSL, not OpenSSL). The as-built reference is `tools/nfc-agent/README.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add an API-key-authenticated backend endpoint that ingests a SOYAL 701 `YYYYMM.txt` door-tap export and per-side gap-fills missing phone punches, plus a PowerShell agent that pushes the file daily.
