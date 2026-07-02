@@ -235,10 +235,12 @@ class TestFullReportingFlow:
             client, db_session, "EMP001", Role.EMPLOYEE
         )
 
-        # Step 2: Seed attendance logs directly in the DB (avoids geolocation)
-        now = datetime.datetime.now(datetime.UTC)
-        clock_in_time = now.replace(hour=8, minute=55, second=0, microsecond=0)
-        clock_out_time = now.replace(hour=18, minute=5, second=0, microsecond=0)
+        # Step 2: Seed attendance logs directly in the DB (avoids geolocation).
+        # Build timestamps from `today` (naive local, like live punches) — a UTC
+        # `now` lands on yesterday's date when run before 08:00 Taipei, making
+        # the generated summary ABSENT and this test time-of-day flaky.
+        clock_in_time = datetime.datetime.combine(today, datetime.time(8, 55))
+        clock_out_time = datetime.datetime.combine(today, datetime.time(18, 5))
 
         log_in = AttendanceLog(
             emp_id="EMP001",

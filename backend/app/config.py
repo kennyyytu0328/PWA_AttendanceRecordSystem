@@ -7,7 +7,10 @@ class Settings(BaseSettings):
 
     secret_key: str = "change-me-in-production"
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    # 1 week — 30-minute sessions forced employees to re-login several times a
+    # day on the PWA. Mitigations for the longer window: password-change
+    # revocation via iat, and terminated-employee rejection (auth_middleware).
+    access_token_expire_minutes: int = 10080
 
     webauthn_rp_id: str = "localhost"
     webauthn_rp_name: str = "GoGoFresh Attendance"

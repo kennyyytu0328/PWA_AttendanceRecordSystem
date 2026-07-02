@@ -51,6 +51,11 @@ async def get_current_user(
     Legacy employees with ``password_changed_at IS NULL`` and tokens issued
     before the iat-claim rollout are exempt — both skip the check.
 
+    Tokens of terminated employees (``terminated_at IS NOT NULL``) are
+    rejected outright — with week-long tokens, blocking login alone would
+    leave an already-issued token usable long after termination. Reversible:
+    reactivation makes still-unexpired tokens valid again.
+
     Returns the token payload dict with at least ``sub`` and ``role``.
 
     Raises
@@ -88,6 +93,12 @@ async def get_current_user(
     iat = payload.get("iat")
     if iat is not None:
         employee = await employee_repository.find_by_id(session, payload["sub"])
+        if employee is not None and employee.terminated_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Account has been deactivated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         if (
             employee is not None
             and employee.password_changed_at is not None
