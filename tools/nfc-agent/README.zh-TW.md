@@ -85,6 +85,35 @@
 - 預期會看到類似這樣的紀錄：`OK 202607.txt: in=0 out=1 skipped=7 unknown=[] terminated=[]`。
 - 端對端驗證：用測試卡 `02400:09483` 刷卡，等下一次匯出後執行本腳本，再到系統上確認該員工當天出現對應的打卡紀錄。
 
+## 日常健康檢查（排程還活著嗎？）
+
+從開發筆電：
+
+```
+ssh gogoffcc_doorcontrol          ← 會提示輸入密碼
+schtasks /Query /TN "GoGoFresh NFC Push" /V /FO LIST | findstr /C:"狀態" /C:"上次結果" /C:"下次執行時間"
+type C:\Users\ltre5\nfc-agent\push-nfc.log
+```
+
+（免互動版本：用「遠端管理」一節的 plink 指令跑同一句 `schtasks`。）
+
+健康的樣子：
+
+- `上次結果: 0` —— 非零表示上次執行失敗（到記錄檔查錯誤訊息）。
+- `下次執行時間` 顯示**即將到來**的 00:20；出現「已停用」或日期過期，代表排程被關掉了。
+- **記錄檔才是真正的證據**：每天晚上 ~00:20 都應該多一行
+  `OK 2026MM.txt: …`。如果最新一行已超過一天，就算排程看起來是啟用的，
+  鏈路也已經斷了——最可能是午夜時電腦沒開（`/SC DAILY` **不會**補跑錯過的排程）。
+
+漏跑的晚上大多會自我修復：每次執行都會重送**整個當月檔案**，而回補是冪等的，
+所以下一次成功的 00:20 就把漏掉的日子補齊了。唯一的例外是**每月 1 號**的那一次——
+只有那次會加送**上個月**的檔案（補上月最後一天的晚間刷卡）。如果 1 號那次漏跑了，
+請手動補送上個月一次：
+
+```powershell
+powershell -NoProfile -Command "& C:\Users\ltre5\nfc-agent\curl.exe -sS -X POST https://www.gogoffcc.com/gogoffcc-arms/api/nfc/import -H ('X-NFC-API-Key: ' + $env:NFC_IMPORT_API_KEY) -H 'Content-Type: application/octet-stream' --data-binary '@C:\Users\ltre5\OneDrive\桌面\門禁\<YYYYMM>.txt'"
+```
+
 ## 補充說明
 
 - 參數皆可覆寫，例如：`push-nfc.ps1 -Folder "D:\door" -ApiUrl "https://…/api/nfc/import" -CurlExe "D:\tools\curl.exe"`。

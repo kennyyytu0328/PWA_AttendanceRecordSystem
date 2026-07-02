@@ -93,6 +93,39 @@ unreachable).
 - End-to-end: tap test card `02400:09483`, wait for the next export, run the
   script, then confirm the punch appears on that employee's day in the app.
 
+## Daily health check (is the task still alive?)
+
+From the dev laptop:
+
+```
+ssh gogoffcc_doorcontrol          ← password prompt
+schtasks /Query /TN "GoGoFresh NFC Push" /V /FO LIST | findstr /C:"狀態" /C:"上次結果" /C:"下次執行時間"
+type C:\Users\ltre5\nfc-agent\push-nfc.log
+```
+
+(Non-interactive variant: the plink one-liner under *Remote management* with the
+same `schtasks` command.)
+
+Healthy looks like:
+
+- `上次結果: 0` — non-zero means the last run failed (check the log for the error).
+- `下次執行時間` shows the **coming** 00:20; `已停用` (disabled) or a stale date
+  means the task was turned off.
+- **The log is the real proof**: one new `OK 2026MM.txt: …` line stamped ~00:20
+  every night. If the newest line is more than a day old, the chain is broken
+  even if the task looks enabled — most likely the PC was off at midnight
+  (`/SC DAILY` does **not** catch up missed runs).
+
+Missed nights mostly self-heal: each run resends the **entire current-month
+file** and gap-fill is idempotent, so the next successful 00:20 covers any
+skipped days. The one exception is the night of the **1st** — that's the only
+run that also resends *last* month's file (for the final day's late taps). If
+that run was missed, push last month manually once:
+
+```powershell
+powershell -NoProfile -Command "& C:\Users\ltre5\nfc-agent\curl.exe -sS -X POST https://www.gogoffcc.com/gogoffcc-arms/api/nfc/import -H ('X-NFC-API-Key: ' + $env:NFC_IMPORT_API_KEY) -H 'Content-Type: application/octet-stream' --data-binary '@C:\Users\ltre5\OneDrive\桌面\門禁\<YYYYMM>.txt'"
+```
+
 ## Notes
 
 - Params can be overridden, e.g. `push-nfc.ps1 -Folder "D:\door" -ApiUrl "https://…/api/nfc/import" -CurlExe "D:\tools\curl.exe"`.
