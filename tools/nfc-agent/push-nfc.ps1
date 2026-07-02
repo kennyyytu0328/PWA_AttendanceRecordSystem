@@ -11,6 +11,10 @@ param(
     [string]$LogFile = "$PSScriptRoot\push-nfc.log"
 )
 
+# Windows PowerShell 5.1 (.NET Framework) may default to TLS 1.0/1.1, which
+# the Cloudflare-fronted API rejects ("無法建立 SSL/TLS 的安全通道").
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
 function Write-Log([string]$msg) {
     Add-Content -Path $LogFile -Value ("{0} {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $msg)
 }
