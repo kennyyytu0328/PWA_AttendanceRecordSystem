@@ -6,19 +6,32 @@ per-side gap-fill. See `docs/superpowers/specs/2026-07-01-nfc-punch-backup-desig
 ## Install on the door PC (`DESKTOP-MMGK6PJ`)
 
 1. Copy `push-nfc.ps1` to e.g. `C:\nfc-agent\push-nfc.ps1`.
-2. Set the API key as a machine environment variable (matches backend
-   `NFC_IMPORT_API_KEY`):
+2. Download **curl for Windows** (64-bit) from <https://curl.se/windows/> and
+   copy `bin\curl.exe` **and** `bin\curl-ca-bundle.crt` from the zip into the
+   same folder as the script.
+
+   > Why: the production edge accepts **TLS 1.3 only**, and Windows 10's
+   > built-in TLS stack (used by `Invoke-RestMethod` and
+   > `System32\curl.exe`) tops out at TLS 1.2. The OpenSSL-based curl build
+   > provides TLS 1.3. The script exits with a clear log error if
+   > `curl.exe` is missing.
+
+3. Set the API key as a machine environment variable (matches backend
+   `NFC_IMPORT_API_KEY`) — run from an **elevated** prompt, then reboot (or
+   restart the Task Scheduler service) so scheduled tasks see it:
 
    ```powershell
    [Environment]::SetEnvironmentVariable("NFC_IMPORT_API_KEY", "<the-secret>", "Machine")
    ```
 
-3. Register the daily scheduled task (runs 00:20, after the 00:10 export):
+4. Register the daily scheduled task (runs 00:20, after the 00:10 export):
 
    ```cmd
-   schtasks /Create /SC DAILY /ST 00:20 /RL HIGHEST /TN "GoGoFresh NFC Push" ^
+   schtasks /Create /SC DAILY /ST 00:20 /RU SYSTEM /TN "GoGoFresh NFC Push" ^
      /TR "powershell -NoProfile -ExecutionPolicy Bypass -File C:\nfc-agent\push-nfc.ps1"
    ```
+
+   `/RU SYSTEM` runs the task regardless of who (if anyone) is logged in.
 
 ## Verify
 
@@ -35,6 +48,8 @@ per-side gap-fill. See `docs/superpowers/specs/2026-07-01-nfc-punch-backup-desig
 
 ## Notes
 
-- Params can be overridden, e.g. `push-nfc.ps1 -Folder "D:\door" -ApiUrl "https://…/api/nfc/import"`.
+- Params can be overridden, e.g. `push-nfc.ps1 -Folder "D:\door" -ApiUrl "https://…/api/nfc/import" -CurlExe "D:\tools\curl.exe"`.
 - The door PC's DHCP IP is irrelevant — this only makes outbound calls.
-- Sends the file bytes raw (CP950); the backend does the decoding.
+- Sends the file bytes raw (CP950) via `curl --data-binary`; the backend does the decoding.
+- The script is saved as UTF-8 **with BOM** — required for the Chinese folder
+  path to survive Windows PowerShell 5.1. Keep the BOM if you edit it.
