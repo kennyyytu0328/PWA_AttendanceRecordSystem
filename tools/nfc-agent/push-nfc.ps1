@@ -1,4 +1,4 @@
-# push-nfc.ps1 — read the current-month SOYAL 701 export and POST it to the
+﻿# push-nfc.ps1 — read the current-month SOYAL 701 export and POST it to the
 # GoGoFresh attendance backend for NFC gap-fill backup.
 #
 # Runs daily via Task Scheduler (~00:20, after the 00:10 file generation).
