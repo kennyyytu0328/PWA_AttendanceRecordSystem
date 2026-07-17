@@ -113,6 +113,41 @@ async def test_punch_invalid_data_returns_422(client):
 
 
 # ---------------------------------------------------------------------------
+# 3b. Punch — second punch within the duplicate-punch window → 400
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_punch_duplicate_within_window_returns_400(client):
+    token = _make_token("EMP001", "EMPLOYEE")
+    mock_result = _fake_punch_result()
+
+    with patch(
+        f"{_SERVICE}.punch",
+        new_callable=AsyncMock,
+        side_effect=[
+            mock_result,
+            ValueError(
+                "Duplicate punch — another punch was recorded within 5 seconds "
+                "(短時間內重複打卡，此次未記錄)"
+            ),
+        ],
+    ):
+        first_resp = await client.post(
+            "/api/attendance/punch",
+            json={"latitude": 25.033, "longitude": 121.565, "accuracy": 10.0},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        second_resp = await client.post(
+            "/api/attendance/punch",
+            json={"latitude": 25.033, "longitude": 121.565, "accuracy": 10.0},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert first_resp.status_code == 200
+    assert second_resp.status_code == 400
+    assert "Duplicate punch" in second_resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
 # 4. Get today's logs — returns list
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio

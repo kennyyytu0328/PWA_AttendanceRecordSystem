@@ -30,6 +30,7 @@ from app.utils.taiwan_calendar import (
 
 
 _HR_PLUS_ROLES = frozenset({Role.HR, Role.ADMIN})
+DUPLICATE_PUNCH_WINDOW_SECONDS = 5
 
 
 async def _load_calendar_index(
@@ -102,6 +103,20 @@ async def punch(
     if day_kind == DayKind.REST_DAY:
         raise ValueError(
             "Saturday is 休息日 — please contact HR for 補登 instead of live punching."
+        )
+
+    today_logs = await attendance_repository.find_by_employee_and_date(
+        session, emp_id, today
+    )
+    now = datetime.datetime.now()
+    if any(
+        not log.is_overridden
+        and abs((now - log.timestamp).total_seconds()) < DUPLICATE_PUNCH_WINDOW_SECONDS
+        for log in today_logs
+    ):
+        raise ValueError(
+            f"Duplicate punch — another punch was recorded within "
+            f"{DUPLICATE_PUNCH_WINDOW_SECONDS} seconds (短時間內重複打卡，此次未記錄)"
         )
 
     geo_result = await geolocation_service.determine_work_mode(

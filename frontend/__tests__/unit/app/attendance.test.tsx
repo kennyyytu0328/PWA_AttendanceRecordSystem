@@ -135,10 +135,11 @@ describe("Attendance History Page", () => {
       expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
     });
 
-    // Should show date/time information from logs
+    // Should show date/time information from non-overridden logs
     expect(screen.getByText(/2026-03-19/)).toBeInTheDocument();
     expect(screen.getByText(/2026-03-18/)).toBeInTheDocument();
-    expect(screen.getByText(/2026-03-17/)).toBeInTheDocument();
+    // 2026-03-17 only exists via the overridden log, which is hidden on this page.
+    expect(screen.queryByText(/2026-03-17/)).not.toBeInTheDocument();
   });
 
   it("shows work mode badges with correct styling", async () => {
@@ -176,7 +177,7 @@ describe("Attendance History Page", () => {
     expect(screen.getByText(/no attendance records/i)).toBeInTheDocument();
   });
 
-  it("shows override indicator for overridden entries", async () => {
+  it("hides overridden entries entirely", async () => {
     mockAttendanceFetch(SAMPLE_LOGS);
 
     const { default: AttendancePage } = await importAttendancePage();
@@ -186,7 +187,7 @@ describe("Attendance History Page", () => {
       expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
     });
 
-    expect(screen.getByText(/overridden/i)).toBeInTheDocument();
+    expect(screen.queryByText(/overridden/i)).not.toBeInTheDocument();
   });
 
   it("renders date filter inputs", async () => {

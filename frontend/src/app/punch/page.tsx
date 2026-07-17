@@ -54,6 +54,7 @@ export default function PunchPage() {
   const [reasonSubmitting, setReasonSubmitting] = useState(false);
   const [reasonError, setReasonError] = useState<string | null>(null);
   const pendingPunch = useRef(false);
+  const submitLockRef = useRef(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -103,9 +104,12 @@ export default function PunchPage() {
       return;
     }
 
+    if (submitLockRef.current) return;
+
     pendingPunch.current = false;
 
     const doSubmit = async () => {
+      submitLockRef.current = true;
       setIsSubmitting(true);
       try {
         const result = await submitPunch(
@@ -133,6 +137,7 @@ export default function PunchPage() {
         setError(message);
       } finally {
         setIsSubmitting(false);
+        submitLockRef.current = false;
       }
     };
 
@@ -162,6 +167,8 @@ export default function PunchPage() {
   const isLoading = position.loading || isSubmitting;
 
   const handlePunch = useCallback(async () => {
+    if (submitLockRef.current) return;
+
     setError(null);
     setPunchResult(null);
     setReasonText("");
@@ -174,6 +181,7 @@ export default function PunchPage() {
       position.accuracy !== null
     ) {
       // Coordinates already available — submit immediately
+      submitLockRef.current = true;
       setIsSubmitting(true);
       try {
         const result = await submitPunch(
@@ -201,6 +209,7 @@ export default function PunchPage() {
         setError(message);
       } finally {
         setIsSubmitting(false);
+        submitLockRef.current = false;
       }
     } else {
       // Request geolocation; useEffect will handle submission when it arrives

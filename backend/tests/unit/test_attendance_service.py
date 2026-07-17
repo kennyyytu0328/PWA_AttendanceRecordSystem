@@ -73,6 +73,15 @@ def _default_geo_result() -> _FakeWorkModeResult:
     )
 
 
+async def _backdate_log(db_session: AsyncSession, log: AttendanceLog) -> None:
+    """Push a log's timestamp outside the duplicate-punch window so a
+    subsequent punch() call in the same test isn't rejected as a duplicate.
+    """
+    log.timestamp -= datetime.timedelta(seconds=10)
+    db_session.add(log)
+    await db_session.commit()
+
+
 def _low_accuracy_geo_result() -> _FakeWorkModeResult:
     """Low-accuracy geolocation result."""
     return _FakeWorkModeResult(
@@ -222,6 +231,7 @@ async def test_punch_stores_immutable_log(mock_geo, db_session: AsyncSession):
         accuracy=10.0,
         ip_address="192.168.1.1",
     )
+    await _backdate_log(db_session, result1.log)
 
     result2 = await punch(
         db_session,
@@ -264,6 +274,7 @@ async def test_multiple_punches_same_day(mock_geo, db_session: AsyncSession):
             ip_address=f"192.168.1.{i}",
         )
         results.append(r)
+        await _backdate_log(db_session, r.log)
 
     ids = {r.log.id for r in results}
     assert len(ids) == 4, "All 4 punches should have distinct IDs"
@@ -309,7 +320,7 @@ async def test_get_today_punches_for_employee(mock_geo, db_session: AsyncSession
     await db_session.commit()
 
     # Create two punches (these use datetime.now(UTC) internally)
-    await punch(
+    first = await punch(
         db_session,
         emp_id="EMP100",
         latitude=25.033,
@@ -317,6 +328,7 @@ async def test_get_today_punches_for_employee(mock_geo, db_session: AsyncSession
         accuracy=10.0,
         ip_address="192.168.1.1",
     )
+    await _backdate_log(db_session, first.log)
     await punch(
         db_session,
         emp_id="EMP100",
@@ -390,3 +402,118 @@ async def test_override_attendance_by_employee_rejected(
             ip_address="10.0.0.1",
             work_mode=WorkMode.OFFICE,
         )
+
+
+# ---------------------------------------------------------------------------
+# 11. punch() rejects a second punch within the duplicate-punch window
+# ---------------------------------------------------------------------------
+@patch(_GEO_PATCH)
+async def test_punch_rejects_duplicate_within_window(mock_geo, db_session: AsyncSession):
+    """A second punch within 5 seconds of the first is rejected."""
+    from app.services.attendance_service import punch
+
+    mock_geo.determine_work_mode = AsyncMock(return_value=_default_geo_result())
+
+    db_session.add(_make_employee())
+    await db_session.commit()
+
+    await punch(
+        db_session,
+        emp_id="EMP100",
+        latitude=25.033,
+        longitude=121.565,
+        accuracy=10.0,
+        ip_address="192.168.1.1",
+    )
+
+    with pytest.raises(ValueError, match="Duplicate punch"):
+        await punch(
+            db_session,
+            emp_id="EMP100",
+            latitude=25.033,
+            longitude=121.565,
+            accuracy=10.0,
+            ip_address="192.168.1.1",
+        )
+
+
+# ---------------------------------------------------------------------------
+# 12. punch() allows a second punch once the duplicate-punch window has passed
+# ---------------------------------------------------------------------------
+@patch(_GEO_PATCH)
+async def test_punch_allows_second_punch_after_window(
+    mock_geo, db_session: AsyncSession
+):
+    """A punch outside the 5-second window is not treated as a duplicate."""
+    from app.services.attendance_service import punch
+
+    mock_geo.determine_work_mode = AsyncMock(return_value=_default_geo_result())
+
+    db_session.add(_make_employee())
+    await db_session.commit()
+
+    db_session.add(
+        AttendanceLog(
+            emp_id="EMP100",
+            timestamp=datetime.datetime.now() - datetime.timedelta(seconds=10),
+            latitude=25.033,
+            longitude=121.565,
+            accuracy=10.0,
+            ip_address="192.168.1.1",
+            work_mode=WorkMode.OFFICE,
+            is_overridden=False,
+        )
+    )
+    await db_session.commit()
+
+    result = await punch(
+        db_session,
+        emp_id="EMP100",
+        latitude=25.033,
+        longitude=121.565,
+        accuracy=10.0,
+        ip_address="192.168.1.1",
+    )
+
+    assert result.log.id is not None
+
+
+# ---------------------------------------------------------------------------
+# 13. punch() duplicate guard ignores overridden logs
+# ---------------------------------------------------------------------------
+@patch(_GEO_PATCH)
+async def test_punch_duplicate_guard_ignores_overridden_logs(
+    mock_geo, db_session: AsyncSession
+):
+    """An overridden log inside the window must not block a live punch."""
+    from app.services.attendance_service import punch
+
+    mock_geo.determine_work_mode = AsyncMock(return_value=_default_geo_result())
+
+    db_session.add(_make_employee())
+    await db_session.commit()
+
+    db_session.add(
+        AttendanceLog(
+            emp_id="EMP100",
+            timestamp=datetime.datetime.now(),
+            latitude=25.033,
+            longitude=121.565,
+            accuracy=10.0,
+            ip_address="192.168.1.1",
+            work_mode=WorkMode.OFFICE,
+            is_overridden=True,
+        )
+    )
+    await db_session.commit()
+
+    result = await punch(
+        db_session,
+        emp_id="EMP100",
+        latitude=25.033,
+        longitude=121.565,
+        accuracy=10.0,
+        ip_address="192.168.1.1",
+    )
+
+    assert result.log.id is not None

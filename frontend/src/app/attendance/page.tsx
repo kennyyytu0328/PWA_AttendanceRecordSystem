@@ -101,6 +101,8 @@ export default function AttendancePage() {
     fetchLogs(startDate, endDate);
   }, [fetchLogs, startDate, endDate]);
 
+  const visibleLogs = logs.filter((log) => !log.is_overridden);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#e8faf9] via-[#edfbf0] to-[#f5fbe8] px-4 py-8">
       <LanguageSwitcher />
@@ -173,7 +175,7 @@ export default function AttendancePage() {
         )}
 
         {/* Empty State */}
-        {!isLoading && !error && logs.length === 0 && (
+        {!isLoading && !error && visibleLogs.length === 0 && (
           <div className="flex flex-col items-center justify-center rounded-xl bg-white py-16 shadow-sm">
             <History className="mb-3 h-12 w-12 text-gray-300" />
             <p className="text-sm font-medium text-gray-500">
@@ -186,7 +188,7 @@ export default function AttendancePage() {
         )}
 
         {/* Table */}
-        {!isLoading && !error && logs.length > 0 && (
+        {!isLoading && !error && visibleLogs.length > 0 && (
           <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
             <table className="w-full min-w-[600px] text-left text-sm">
               <thead>
@@ -199,9 +201,9 @@ export default function AttendancePage() {
                 </tr>
               </thead>
               <tbody>
-                {logs.map((log, index) => {
+                {visibleLogs.map((log, index) => {
                   const date = formatDate(log.timestamp);
-                  const prevDate = index > 0 ? formatDate(logs[index - 1].timestamp) : null;
+                  const prevDate = index > 0 ? formatDate(visibleLogs[index - 1].timestamp) : null;
                   const isFirstOfDate = date !== prevDate;
 
                   return (
@@ -223,11 +225,6 @@ export default function AttendancePage() {
                     </td>
                     <td className="px-4 py-3">
                       {isFirstOfDate && <StatusBadge status={summaryMap[date]} />}
-                      {log.is_overridden && (
-                        <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                          {t("attendance.overridden")}
-                        </span>
-                      )}
                     </td>
                   </tr>
                   );
