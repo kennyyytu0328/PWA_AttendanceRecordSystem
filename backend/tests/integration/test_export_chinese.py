@@ -70,6 +70,57 @@ async def test_csv_export_uses_chinese_headers(db_session):
     ]
 
 
+async def test_csv_export_formats_punch_times_human_readable(db_session):
+    """上班/下班時間 export as 'YYYY-MM-DD HH:MM:SS' — no 'T', no microseconds.
+
+    Seeds real attendance logs (with microsecond timestamps, as live punches
+    produce) so the summary survives the export's recomputation.
+    """
+    from app.models.attendance_log import AttendanceLog, WorkMode
+
+    await _seed_employee_with_shift(
+        db_session, emp_id="E044", shift_start_time="09:00", shift_end_time="18:00"
+    )
+    db_session.add_all(
+        [
+            AttendanceLog(
+                emp_id="E044",
+                timestamp=datetime.datetime(2026, 5, 14, 7, 21, 1, 219575),
+                latitude=25.0,
+                longitude=121.5,
+                accuracy=10.0,
+                ip_address="127.0.0.1",
+                work_mode=WorkMode.OFFICE,
+            ),
+            AttendanceLog(
+                emp_id="E044",
+                timestamp=datetime.datetime(2026, 5, 14, 17, 7, 18, 509088),
+                latitude=25.0,
+                longitude=121.5,
+                accuracy=10.0,
+                ip_address="127.0.0.1",
+                work_mode=WorkMode.OFFICE,
+            ),
+        ]
+    )
+    await db_session.commit()
+    await monthly_submission_repository.upsert(
+        db_session, emp_id="E044", year=2026, month=5
+    )
+
+    csv_text = await reporting_service.export_attendance(
+        db_session,
+        start_date=datetime.date(2026, 5, 14),
+        end_date=datetime.date(2026, 5, 14),
+        format="csv",
+    )
+    reader = csv.reader(io.StringIO(csv_text))
+    next(reader)  # skip header
+    row = next(reader)
+    assert row[6] == "2026-05-14 07:21:01"
+    assert row[7] == "2026-05-14 17:07:18"
+
+
 async def test_csv_export_translates_status_values(db_session):
     await _seed_employee_with_shift(
         db_session, emp_id="E041", shift_start_time="09:00", shift_end_time="18:00"

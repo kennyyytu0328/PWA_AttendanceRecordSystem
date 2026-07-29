@@ -85,6 +85,17 @@ def _format_remark(leave_type: str | None, remark: str | None) -> str:
     return leave_type or remark or ""
 
 
+def _format_punch_time(iso_value: str) -> str:
+    """Render an ISO punch timestamp as ``YYYY-MM-DD HH:MM:SS`` for CSV/Excel.
+
+    JSON export keeps the raw ISO value; only the Chinese-localized rows use
+    this human-readable form (drops the ``T`` separator and microseconds).
+    """
+    if not iso_value:
+        return ""
+    return datetime.datetime.fromisoformat(iso_value).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def _format_overtime_hours(value) -> str:
     """Render overtime_hours for export — '' when null, else trimmed decimal."""
     if value is None:
@@ -738,8 +749,8 @@ async def export_attendance(
             row["date"],
             row["weekday"],
             row["shift_time"],
-            row["first_clock_in"],
-            row["last_clock_out"],
+            _format_punch_time(row["first_clock_in"]),
+            _format_punch_time(row["last_clock_out"]),
             STATUS_ZH.get(row["status"], row["status"]),
             row["remark"],
             row.get("overtime_hours", ""),
