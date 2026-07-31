@@ -377,17 +377,23 @@ async def bulk_override_punches(
         entry_date = entry["date"]
         clock_in_time = entry.get("first_clock_in")
         clock_out_time = entry.get("last_clock_out")
+        # Key presence carries meaning: an omitted key means "leave the stored
+        # value alone", while a key explicitly present as None means "clear it"
+        # (the router builds entries with model_dump(exclude_unset=True)).
         leave_type = entry.get("leave_type")
         remark = entry.get("remark")
         overtime_hours = entry.get("overtime_hours")
+        leave_type_set = "leave_type" in entry
+        remark_set = "remark" in entry
+        overtime_set = "overtime_hours" in entry
 
         # Skip only when literally nothing changes
         if (
             clock_in_time is None
             and clock_out_time is None
-            and leave_type is None
-            and remark is None
-            and overtime_hours is None
+            and not leave_type_set
+            and not remark_set
+            and not overtime_set
         ):
             continue
 
@@ -443,26 +449,50 @@ async def bulk_override_punches(
 
         # Stamp leave_type / remark / overtime_hours onto the existing summary
         # (or create a placeholder) so generate_daily_summary preserves them.
-        if leave_type is not None or remark is not None or overtime_hours is not None:
+        # Runs on key presence (not value) so explicit nulls clear the fields.
+        if leave_type_set or remark_set or overtime_set:
             existing_summaries = await summary_repository.find_by_employee(
                 session, emp_id, start_date=entry_date, end_date=entry_date
             )
             if existing_summaries:
                 existing = existing_summaries[0]
+                final_leave = leave_type if leave_type_set else existing.leave_type
+                final_remark = remark if remark_set else existing.remark
+                final_overtime = (
+                    overtime_hours if overtime_set else existing.overtime_hours
+                )
+                # Placeholder status; regenerated next. But when this entry
+                # clears the leave on a row with no punches at all,
+                # generate_daily_summary returns None without upserting — use
+                # ABSENT so a stale LEAVE status can't linger on the row.
+                placeholder_status = existing.status
+                if (
+                    final_leave is None
+                    and clock_in_time is None
+                    and clock_out_time is None
+                    and existing.first_clock_in is None
+                    and existing.last_clock_out is None
+                ):
+                    placeholder_status = AttendanceStatus.ABSENT
                 await summary_repository.upsert_summary(
                     session,
                     emp_id=emp_id,
                     date=entry_date,
                     first_clock_in=existing.first_clock_in,
                     last_clock_out=existing.last_clock_out,
-                    status=existing.status,  # placeholder; regenerated next
-                    leave_type=leave_type,
-                    remark=remark,
-                    overtime_hours=overtime_hours,
+                    status=placeholder_status,
+                    leave_type=final_leave,
+                    remark=final_remark,
+                    overtime_hours=final_overtime,
                 )
-            else:
+            elif (
+                leave_type is not None
+                or remark is not None
+                or overtime_hours is not None
+            ):
                 # No existing summary yet — create one with ABSENT placeholder;
-                # generate_daily_summary will overwrite the status.
+                # generate_daily_summary will overwrite the status. Skipped when
+                # every value is None (clearing a row that has nothing stored).
                 await summary_repository.upsert_summary(
                     session,
                     emp_id=emp_id,

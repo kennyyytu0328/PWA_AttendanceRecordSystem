@@ -239,16 +239,11 @@ async def bulk_override(
             emp_id=target_emp_id,
             requesting_user_id=user["sub"],
             requesting_user_role=Role(user["role"]),
+            # exclude_unset keeps only the keys the client actually sent, so
+            # the service can distinguish "omitted → leave alone" from an
+            # explicit null → "clear the stored value".
             entries=[
-                {
-                    "date": entry.date,
-                    "first_clock_in": entry.first_clock_in,
-                    "last_clock_out": entry.last_clock_out,
-                    "leave_type": entry.leave_type,
-                    "remark": entry.remark,
-                    "overtime_hours": entry.overtime_hours,
-                }
-                for entry in body.entries
+                entry.model_dump(exclude_unset=True) for entry in body.entries
             ],
         )
     except PermissionError as exc:
