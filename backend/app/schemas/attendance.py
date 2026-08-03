@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -24,6 +25,7 @@ class PunchGPSRequest(BaseModel):
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
     accuracy: float = Field(..., ge=0)
+    late_leave_reason: Optional[Literal["ASSIGNED_OVERTIME", "PERSONAL"]] = None
 
 
 class OverrideRequest(BaseModel):

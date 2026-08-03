@@ -72,6 +72,7 @@ async def punch(
     longitude: float,
     accuracy: float,
     ip_address: str,
+    late_leave_reason: str | None = None,
 ) -> PunchResult:
     """Record a clock-in/out punch for *emp_id*.
 
@@ -139,14 +140,31 @@ async def punch(
     # Compute real-time tardiness status
     tardiness_status = await _check_tardiness(session, employee, saved_log)
 
-    # If tardy, auto-generate summary so employee can submit a reason
+    # If tardy, auto-generate summary so employee can submit a reason.
+    # Also regenerate when the punch carries a late-leave reason (超時下班),
+    # so the reason can be stamped onto the fresh summary.
     summary_id = None
-    if tardiness_status in (AttendanceStatus.LATE, AttendanceStatus.EARLY_LEAVE):
-        from app.services import reporting_service
-
+    summary = None
+    if (
+        tardiness_status in (AttendanceStatus.LATE, AttendanceStatus.EARLY_LEAVE)
+        or late_leave_reason is not None
+    ):
         summary = await reporting_service.generate_daily_summary(
             session, emp_id, saved_log.timestamp.date(), day_kind=day_kind
         )
+    if late_leave_reason is not None and summary is not None:
+        summary = await summary_repository.upsert_summary(
+            session,
+            emp_id=emp_id,
+            date=saved_log.timestamp.date(),
+            first_clock_in=summary.first_clock_in,
+            last_clock_out=summary.last_clock_out,
+            status=summary.status,
+            leave_type=summary.leave_type,
+            remark=summary.remark,
+            late_leave_reason=late_leave_reason,
+        )
+    if tardiness_status in (AttendanceStatus.LATE, AttendanceStatus.EARLY_LEAVE):
         if summary is not None:
             summary_id = summary.id
 

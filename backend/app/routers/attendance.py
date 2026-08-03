@@ -39,6 +39,7 @@ async def punch(
             longitude=body.longitude,
             accuracy=body.accuracy,
             ip_address=ip_address,
+            late_leave_reason=body.late_leave_reason,
         )
     except ValueError as exc:
         raise HTTPException(
