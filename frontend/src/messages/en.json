@@ -361,7 +361,10 @@
     "overtimePunchHint": "Overtime needs clock-in and clock-out",
     "lateLeaveReason": "Late-leave reason",
     "lateReasonAssignedOvertimeShort": "A: Assigned overtime",
-    "lateReasonPersonalShort": "B: Personal reasons"
+    "lateReasonPersonalShort": "B: Personal reasons",
+    "lateReasonMissingTitle": "{count} day(s) need a late-leave reason",
+    "lateReasonMissingBody": "These dates have a clock-out past the scheduled end time. Select a late-leave reason before submitting:",
+    "lateReasonMissingHint": "Late clock-out needs a reason"
   },
   "calendarStatus": {
     "title": "Workday Calendar Status",

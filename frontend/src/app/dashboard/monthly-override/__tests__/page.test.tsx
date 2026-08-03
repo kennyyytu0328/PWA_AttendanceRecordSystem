@@ -83,6 +83,7 @@ interface WorkdayResp {
     is_holiday: boolean;
     description: string;
     is_makeup_workday: boolean;
+    day_kind?: string;
   }>;
 }
 
@@ -350,6 +351,130 @@ describe("MonthlyOverridePage submission flow", () => {
         }),
       );
     });
+  });
+});
+
+describe("MonthlyOverridePage late-leave reason hard-block", () => {
+  // The page's year/month state defaults to the real current date (it isn't
+  // driven by the mocked workdays response's own year/month fields), so the
+  // fixture date must track "today" rather than a hardcoded month — otherwise
+  // the mockSubmit(empId, year, month) assertion drifts as time passes.
+  const now = new Date();
+  const LR_YEAR = now.getFullYear();
+  const LR_MONTH = now.getMonth() + 1;
+  const LR_DATE = `${LR_YEAR}-${String(LR_MONTH).padStart(2, "0")}-22`;
+
+  function buildLateReasonWorkdays(): WorkdayResp {
+    return {
+      year: LR_YEAR,
+      month: LR_MONTH,
+      days: [
+        {
+          date: LR_DATE,
+          weekday_zh: "週三",
+          is_holiday: false,
+          description: "",
+          is_makeup_workday: false,
+          // Explicit so the row is treated as a workday regardless of which
+          // real weekday day-22 falls on this month.
+          day_kind: "WORKDAY",
+        },
+      ],
+    };
+  }
+
+  function wireLateReasonApi(lateLeaveReason: string | null): void {
+    mockGet.mockImplementation((url: string) => {
+      if (url.startsWith("/api/config/workdays")) {
+        return Promise.resolve(buildLateReasonWorkdays());
+      }
+      if (url.startsWith("/api/attendance/summaries")) {
+        return Promise.resolve([
+          {
+            id: 1,
+            emp_id: "EMP001",
+            date: LR_DATE,
+            first_clock_in: `${LR_DATE}T09:00:00`,
+            last_clock_out: `${LR_DATE}T19:00:00`,
+            status: "NORMAL",
+            leave_type: null,
+            remark: null,
+            late_leave_reason: lateLeaveReason,
+          },
+        ]);
+      }
+      if (url.startsWith("/api/employees")) {
+        return Promise.resolve([]);
+      }
+      if (url.startsWith("/api/auth/me")) {
+        return Promise.resolve({
+          emp_id: "EMP001",
+          role: "EMPLOYEE",
+          shift_start_time: "09:00",
+          shift_end_time: "18:00",
+        });
+      }
+      if (url.startsWith("/api/config/late-reason-leave-types")) {
+        return Promise.resolve({ leave_types: ["出差"] });
+      }
+      return Promise.reject(new Error(`unmocked get: ${url}`));
+    });
+    mockPut.mockResolvedValue({ emp_id: "EMP001", updated_count: 1, results: [] });
+    mockListLeaveTypes.mockResolvedValue({ leave_types: ["特休", "病假", "事假"] });
+    mockGetStatus.mockResolvedValue({ submitted: false, submitted_at: null });
+  }
+
+  async function renderLateReasonPage(): Promise<void> {
+    await act(async () => {
+      render(<MonthlyOverridePage />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText(LR_DATE)).toBeInTheDocument();
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("hard-blocks 本月送單 when a required late-leave reason is missing", async () => {
+    wireLateReasonApi(null);
+    await renderLateReasonPage();
+
+    const submitBtn = await screen.findByRole("button", {
+      name: /monthlyOverride\.submitMonth/,
+    });
+    await act(async () => {
+      fireEvent.click(submitBtn);
+    });
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveTextContent(LR_DATE);
+    expect(mockSubmit).not.toHaveBeenCalled();
+  });
+
+  it("allows 本月送單 when reasons are filled or day is exempt", async () => {
+    wireLateReasonApi("PERSONAL");
+    mockSubmit.mockResolvedValue({
+      emp_id: "EMP001",
+      year: LR_YEAR,
+      month: LR_MONTH,
+      submitted_at: `${LR_DATE}T20:00:00`,
+    });
+    await renderLateReasonPage();
+
+    const submitBtn = await screen.findByRole("button", {
+      name: /monthlyOverride\.submitMonth/,
+    });
+    await act(async () => {
+      fireEvent.click(submitBtn);
+    });
+
+    await waitFor(() => {
+      expect(mockSubmit).toHaveBeenCalledWith("EMP001", LR_YEAR, LR_MONTH);
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
 

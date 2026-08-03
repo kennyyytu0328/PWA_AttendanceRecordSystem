@@ -364,7 +364,10 @@
     "overtimePunchHint": "加班需填上下班打卡時間",
     "lateLeaveReason": "延後下班原因",
     "lateReasonAssignedOvertimeShort": "A:主管指派加班",
-    "lateReasonPersonalShort": "B:因個人原因留在辦公室"
+    "lateReasonPersonalShort": "B:因個人原因留在辦公室",
+    "lateReasonMissingTitle": "有 {count} 天需勾選延後下班原因",
+    "lateReasonMissingBody": "以下日期的下班時間已超過班別應下班時間，請先勾選「延後下班原因」再送單：",
+    "lateReasonMissingHint": "延後下班需勾選原因"
   },
   "calendarStatus": {
     "title": "工作日行事曆狀態",

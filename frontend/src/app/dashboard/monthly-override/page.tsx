@@ -12,11 +12,12 @@ import {
 
 import { BackButton } from "@/components/BackButton";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { LateReasonMissingModal } from "@/components/LateReasonMissingModal";
 import { OvertimePunchModal } from "@/components/OvertimePunchModal";
 import { RemarkCell } from "@/components/RemarkCell";
 import { WarningModal, type AbnormalDay, type AbnormalStatus } from "@/components/WarningModal";
 
-import { apiClient } from "@/lib/api";
+import { apiClient, ApiError } from "@/lib/api";
 import { deriveDayKindFromWorkday } from "@/lib/day-kind";
 import { leaveTypesApi } from "@/lib/api/leave-types";
 import {
@@ -24,6 +25,7 @@ import {
   type SubmissionStatus,
 } from "@/lib/api/monthly-submissions";
 import { useAuth } from "@/lib/auth-context";
+import { useMyProfile } from "@/hooks/useMyProfile";
 import { useTranslation } from "@/lib/i18n";
 import type {
   BulkOverrideEntry,
@@ -116,6 +118,26 @@ function rowNeedsPunchForOvertime(row: DayRow): boolean {
     row.overtimeHours != null &&
     (row.clockIn.trim() === "" || row.clockOut.trim() === "")
   );
+}
+
+/**
+ * Late-leave reason is required on workday-kind days whose clock-out runs
+ * strictly past shift end. Leave days are exempt unless the leave type is in
+ * the configured still-requires list (e.g. 出差). Mirrors the backend gate in
+ * monthly_submission_service.find_missing_late_reason_dates.
+ */
+function rowNeedsLateLeaveReason(
+  row: DayRow,
+  shiftEnd: string | null,
+  requiredLeaveTypes: readonly string[],
+): boolean {
+  if (!row.isEditable || !shiftEnd) return false;
+  if (row.day_kind !== "WORKDAY" && row.day_kind !== "MAKEUP_WORKDAY") return false;
+  if (row.leaveType && !requiredLeaveTypes.includes(row.leaveType)) return false;
+  const out = row.clockOut.trim();
+  if (out === "" || out.length < 5) return false;
+  if (out <= shiftEnd) return false;
+  return !row.lateLeaveReason;
 }
 
 function getRowClass(row: DayRow): string {
@@ -232,6 +254,7 @@ export default function MonthlyOverridePage() {
   const { t } = useTranslation();
   const role = user?.role ?? "EMPLOYEE";
   const isHrPlus = hasRole(role, HR_ROLES);
+  const { profile } = useMyProfile(true);
 
   // Month/year state
   const [year, setYear] = useState(() => new Date().getFullYear());
@@ -250,6 +273,9 @@ export default function MonthlyOverridePage() {
   // Leave types (fetched once on mount)
   const [leaveTypes, setLeaveTypes] = useState<readonly string[]>([]);
 
+  // Leave types that still require a late-leave reason even when set (e.g. 出差)
+  const [requiredLeaveTypes, setRequiredLeaveTypes] = useState<readonly string[]>(["出差"]);
+
   // Submission status for current (year, month, empId)
   const [submissionStatus, setSubmissionStatus] =
     useState<SubmissionStatus | null>(null);
@@ -257,6 +283,7 @@ export default function MonthlyOverridePage() {
   // Submit-month flow
   const [warningOpen, setWarningOpen] = useState(false);
   const [overtimeModalOpen, setOvertimeModalOpen] = useState(false);
+  const [lateReasonModalOpen, setLateReasonModalOpen] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState(false);
 
   // Derived: unique departments & filtered employees
@@ -408,6 +435,16 @@ export default function MonthlyOverridePage() {
     ? selectedEmpId || user?.emp_id || null
     : user?.emp_id ?? null;
 
+  // Shift end used by the late-leave reason rule: HR viewing another
+  // employee uses that employee's shift; self uses the fetched profile.
+  const targetShiftEnd: string | null = (() => {
+    if (isHrPlus && selectedEmpId) {
+      const emp = employees.find((e) => e.emp_id === selectedEmpId);
+      return emp?.shift_end_time ?? null;
+    }
+    return profile?.shift_end_time ?? null;
+  })();
+
   // Fetch leave types once on mount
   useEffect(() => {
     let cancelled = false;
@@ -422,6 +459,22 @@ export default function MonthlyOverridePage() {
       }
     }
     loadLeaveTypes();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Fetch the leave types that still require a late-leave reason (e.g. 出差)
+  useEffect(() => {
+    let cancelled = false;
+    apiClient
+      .get<{ leave_types: string[] }>("/api/config/late-reason-leave-types")
+      .then((d) => {
+        if (!cancelled) setRequiredLeaveTypes(d.leave_types);
+      })
+      .catch(() => {
+        // silent — keep the default
+      });
     return () => {
       cancelled = true;
     };
@@ -623,6 +676,12 @@ export default function MonthlyOverridePage() {
     .filter(rowNeedsPunchForOvertime)
     .map((row) => row.date);
 
+  // Days with a late clock-out but no reason selected — drives the
+  // submission hard-block.
+  const lateReasonMissingDates: readonly string[] = rows
+    .filter((row) => rowNeedsLateLeaveReason(row, targetShiftEnd, requiredLeaveTypes))
+    .map((row) => row.date);
+
   // Perform the actual submission against the API
   const performSubmit = useCallback(async () => {
     if (!targetEmpId) {
@@ -640,8 +699,12 @@ export default function MonthlyOverridePage() {
       );
       setSubmissionStatus(status);
       setMessage({ type: "success", text: t("monthlyOverride.submitSuccess") });
-    } catch {
-      setMessage({ type: "error", text: t("monthlyOverride.submitError") });
+    } catch (err) {
+      const text =
+        err instanceof ApiError && err.code
+          ? err.message
+          : t("monthlyOverride.submitError");
+      setMessage({ type: "error", text });
     } finally {
       setPendingSubmit(false);
       setWarningOpen(false);
@@ -654,12 +717,16 @@ export default function MonthlyOverridePage() {
       setMessage({ type: "error", text: t("monthlyOverride.selectEmployeeFirst") });
       return;
     }
+    if (lateReasonMissingDates.length > 0) {
+      setLateReasonModalOpen(true);
+      return;
+    }
     if (abnormalDays.length === 0) {
       void performSubmit();
       return;
     }
     setWarningOpen(true);
-  }, [targetEmpId, abnormalDays.length, performSubmit, t]);
+  }, [targetEmpId, lateReasonMissingDates.length, abnormalDays.length, performSubmit, t]);
 
   const handleWarningProceed = useCallback(() => {
     void performSubmit();
@@ -896,7 +963,14 @@ export default function MonthlyOverridePage() {
               </thead>
               <tbody>
                 {rows.map((row) => {
-                  const rowClass = getRowClass(row);
+                  const needsReason = rowNeedsLateLeaveReason(
+                    row,
+                    targetShiftEnd,
+                    requiredLeaveTypes,
+                  );
+                  const rowClass = needsReason
+                    ? "bg-red-50 border-l-4 border-l-red-500"
+                    : getRowClass(row);
                   return (
                   <tr
                     key={row.date}
@@ -955,22 +1029,39 @@ export default function MonthlyOverridePage() {
                     </td>
                     <td className="px-4 py-3">
                       {row.isEditable ? (
-                        <select
-                          data-testid="late-reason-select"
-                          value={row.lateLeaveReason ?? ""}
-                          onChange={(e) =>
-                            handleLateReasonChange(row.date, e.target.value)
-                          }
-                          className="max-w-[11rem] rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-1 focus:ring-[#4ec6c1] focus:outline-none"
-                        >
-                          <option value="">—</option>
-                          <option value="ASSIGNED_OVERTIME">
-                            {t("monthlyOverride.lateReasonAssignedOvertimeShort")}
-                          </option>
-                          <option value="PERSONAL">
-                            {t("monthlyOverride.lateReasonPersonalShort")}
-                          </option>
-                        </select>
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            data-testid="late-reason-select"
+                            value={row.lateLeaveReason ?? ""}
+                            onChange={(e) =>
+                              handleLateReasonChange(row.date, e.target.value)
+                            }
+                            className={`max-w-[11rem] rounded-lg border px-2 py-1 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-1 focus:ring-[#4ec6c1] focus:outline-none ${
+                              needsReason
+                                ? "border-red-400 bg-red-50"
+                                : "border-gray-300"
+                            }`}
+                          >
+                            <option value="">—</option>
+                            <option value="ASSIGNED_OVERTIME">
+                              {t("monthlyOverride.lateReasonAssignedOvertimeShort")}
+                            </option>
+                            <option value="PERSONAL">
+                              {t("monthlyOverride.lateReasonPersonalShort")}
+                            </option>
+                          </select>
+                          {needsReason && (
+                            <span
+                              className="flex items-center text-red-500"
+                              title={t("monthlyOverride.lateReasonMissingHint")}
+                            >
+                              <AlertTriangle className="h-4 w-4" aria-hidden />
+                              <span className="sr-only">
+                                {t("monthlyOverride.lateReasonMissingHint")}
+                              </span>
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}
@@ -1058,6 +1149,11 @@ export default function MonthlyOverridePage() {
         open={overtimeModalOpen}
         dates={overtimePunchErrorDates}
         onClose={() => setOvertimeModalOpen(false)}
+      />
+      <LateReasonMissingModal
+        open={lateReasonModalOpen}
+        dates={lateReasonMissingDates}
+        onClose={() => setLateReasonModalOpen(false)}
       />
     </div>
   );
