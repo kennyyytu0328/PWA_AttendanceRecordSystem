@@ -92,6 +92,7 @@ interface DayRow {
   readonly leaveType: string | null;
   readonly remark: string | null;
   readonly overtimeHours: number | null;
+  readonly lateLeaveReason: string | null;
 }
 
 const OVERTIME_OPTIONS: readonly number[] = [
@@ -381,6 +382,7 @@ export default function MonthlyOverridePage() {
           remark: summary?.remark ?? null,
           overtimeHours:
             summary?.overtime_hours != null ? Number(summary.overtime_hours) : null,
+          lateLeaveReason: summary?.late_leave_reason ?? null,
         };
       });
 
@@ -515,6 +517,15 @@ export default function MonthlyOverridePage() {
     [],
   );
 
+  const handleLateReasonChange = useCallback((date: string, value: string) => {
+    const next = value === "" ? null : value;
+    setRows((prev) =>
+      prev.map((row) =>
+        row.date === date ? { ...row, lateLeaveReason: next } : row,
+      ),
+    );
+  }, []);
+
   // Save overrides
   const handleSave = useCallback(async () => {
     // Block: overtime requires both punch times. Surface the offending days in
@@ -536,7 +547,8 @@ export default function MonthlyOverridePage() {
             row.clockOut !== orig.clockOut ||
             row.leaveType !== orig.leaveType ||
             row.remark !== orig.remark ||
-            row.overtimeHours !== orig.overtimeHours)
+            row.overtimeHours !== orig.overtimeHours ||
+            row.lateLeaveReason !== orig.lateLeaveReason)
         );
       })
       .map((row) => ({
@@ -546,6 +558,7 @@ export default function MonthlyOverridePage() {
         leave_type: row.leaveType,
         remark: row.remark,
         overtime_hours: row.overtimeHours,
+        late_leave_reason: row.lateLeaveReason,
       }));
 
     if (changedEntries.length === 0) {
@@ -844,7 +857,7 @@ export default function MonthlyOverridePage() {
         {/* Calendar Table */}
         {!isLoading && (
           <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
-            <table className="w-full min-w-[720px] text-left text-sm">
+            <table className="w-full min-w-[840px] text-left text-sm">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className="px-4 py-3 font-medium text-gray-600">
@@ -863,6 +876,9 @@ export default function MonthlyOverridePage() {
                   <th className="px-4 py-3 font-medium text-gray-600">
                     {t("monthlyOverride.clockOut")}
                     <span className="ml-1 font-normal text-gray-400">(24h)</span>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-gray-600">
+                    {t("monthlyOverride.lateLeaveReason")}
                   </th>
                   <th className="px-4 py-3 font-medium text-gray-600">
                     {t("monthlyOverride.leaveType")}
@@ -933,6 +949,28 @@ export default function MonthlyOverridePage() {
                               : "border-gray-300"
                           }`}
                         />
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {row.isEditable ? (
+                        <select
+                          data-testid="late-reason-select"
+                          value={row.lateLeaveReason ?? ""}
+                          onChange={(e) =>
+                            handleLateReasonChange(row.date, e.target.value)
+                          }
+                          className="max-w-[11rem] rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900 shadow-sm focus:border-[#4ec6c1] focus:ring-1 focus:ring-[#4ec6c1] focus:outline-none"
+                        >
+                          <option value="">—</option>
+                          <option value="ASSIGNED_OVERTIME">
+                            {t("monthlyOverride.lateReasonAssignedOvertimeShort")}
+                          </option>
+                          <option value="PERSONAL">
+                            {t("monthlyOverride.lateReasonPersonalShort")}
+                          </option>
+                        </select>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}

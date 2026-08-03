@@ -132,6 +132,7 @@ export interface DailyAttendanceSummary {
   readonly reason?: string | null;
   readonly shift_time?: string | null;
   readonly submission_status?: SubmissionStatus;
+  readonly late_leave_reason?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +196,7 @@ export interface BulkOverrideEntry {
   readonly leave_type?: string | null;
   readonly remark?: string | null;
   readonly overtime_hours?: number | null;
+  readonly late_leave_reason?: string | null;
 }
 
 export interface BulkOverrideRequest {

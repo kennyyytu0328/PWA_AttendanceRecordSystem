@@ -361,7 +361,10 @@
     "proceed": "繼續送出",
     "overtimePunchTitle": "有 {count} 天加班缺少打卡時間",
     "overtimePunchBody": "加班一定有實際工作，必須同時填寫上班與下班打卡時間。請補上下列日期的打卡時間後再儲存：",
-    "overtimePunchHint": "加班需填上下班打卡時間"
+    "overtimePunchHint": "加班需填上下班打卡時間",
+    "lateLeaveReason": "延後下班原因",
+    "lateReasonAssignedOvertimeShort": "A:主管指派加班",
+    "lateReasonPersonalShort": "B:因個人原因留在辦公室"
   },
   "calendarStatus": {
     "title": "工作日行事曆狀態",

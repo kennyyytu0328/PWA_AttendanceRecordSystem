@@ -126,6 +126,7 @@ function buildSummaries(): ReadonlyArray<{
   status: string;
   leave_type: string | null;
   remark: string | null;
+  late_leave_reason?: string | null;
 }> {
   return [
     {
@@ -137,6 +138,7 @@ function buildSummaries(): ReadonlyArray<{
       status: "LATE",
       leave_type: null,
       remark: null,
+      late_leave_reason: "PERSONAL",
     },
     {
       id: 2,
@@ -147,6 +149,7 @@ function buildSummaries(): ReadonlyArray<{
       status: "NORMAL",
       leave_type: null,
       remark: null,
+      late_leave_reason: null,
     },
   ];
 }
@@ -314,6 +317,38 @@ describe("MonthlyOverridePage submission flow", () => {
       date: "2026-05-01",
       leave_type: "特休",
       remark: null,
+    });
+  });
+
+  it("renders the late-leave reason column, prefills it, and saves changes", async () => {
+    mockGetStatus.mockResolvedValue({ submitted: false, submitted_at: null });
+    await renderPage();
+
+    const selects = await screen.findAllByTestId("late-reason-select");
+    expect(selects.length).toBeGreaterThan(0);
+
+    // Prefilled from the API fixture: 2026-05-01 has late_leave_reason "PERSONAL".
+    expect((selects[0] as HTMLSelectElement).value).toBe("PERSONAL");
+
+    await act(async () => {
+      fireEvent.change(selects[0], { target: { value: "ASSIGNED_OVERTIME" } });
+    });
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: /monthlyOverride\.save$/ }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(mockPut).toHaveBeenCalledWith(
+        "/api/attendance/override-bulk",
+        expect.objectContaining({
+          entries: expect.arrayContaining([
+            expect.objectContaining({ late_leave_reason: "ASSIGNED_OVERTIME" }),
+          ]),
+        }),
+      );
     });
   });
 });
