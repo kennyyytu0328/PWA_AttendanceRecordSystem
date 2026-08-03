@@ -8,6 +8,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.models.daily_attendance_summary import LATE_LEAVE_REASONS
+
 
 class BulkOverrideEntry(BaseModel):
     """A single day's override data."""
@@ -18,6 +20,18 @@ class BulkOverrideEntry(BaseModel):
     leave_type: Optional[str] = Field(default=None, max_length=50)
     remark: Optional[str] = Field(default=None, max_length=500)
     overtime_hours: Optional[decimal.Decimal] = Field(default=None)
+    late_leave_reason: Optional[str] = Field(default=None, max_length=30)
+
+    @field_validator("late_leave_reason")
+    @classmethod
+    def _validate_late_leave_reason(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        if v not in LATE_LEAVE_REASONS:
+            raise ValueError(
+                "late_leave_reason must be ASSIGNED_OVERTIME or PERSONAL"
+            )
+        return v
 
     @field_validator("overtime_hours")
     @classmethod

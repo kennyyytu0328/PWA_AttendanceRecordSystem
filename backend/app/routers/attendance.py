@@ -174,6 +174,7 @@ async def get_my_summaries(
             "overtime_hours": (
                 float(s.overtime_hours) if s.overtime_hours is not None else None
             ),
+            "late_leave_reason": s.late_leave_reason,
         }
         for s in summaries
     ]

@@ -401,9 +401,11 @@ async def bulk_override_punches(
         leave_type = entry.get("leave_type")
         remark = entry.get("remark")
         overtime_hours = entry.get("overtime_hours")
+        late_reason = entry.get("late_leave_reason")
         leave_type_set = "leave_type" in entry
         remark_set = "remark" in entry
         overtime_set = "overtime_hours" in entry
+        late_reason_set = "late_leave_reason" in entry
 
         # Skip only when literally nothing changes
         if (
@@ -412,6 +414,7 @@ async def bulk_override_punches(
             and not leave_type_set
             and not remark_set
             and not overtime_set
+            and not late_reason_set
         ):
             continue
 
@@ -468,7 +471,7 @@ async def bulk_override_punches(
         # Stamp leave_type / remark / overtime_hours onto the existing summary
         # (or create a placeholder) so generate_daily_summary preserves them.
         # Runs on key presence (not value) so explicit nulls clear the fields.
-        if leave_type_set or remark_set or overtime_set:
+        if leave_type_set or remark_set or overtime_set or late_reason_set:
             existing_summaries = await summary_repository.find_by_employee(
                 session, emp_id, start_date=entry_date, end_date=entry_date
             )
@@ -478,6 +481,9 @@ async def bulk_override_punches(
                 final_remark = remark if remark_set else existing.remark
                 final_overtime = (
                     overtime_hours if overtime_set else existing.overtime_hours
+                )
+                final_late_reason = (
+                    late_reason if late_reason_set else existing.late_leave_reason
                 )
                 # Placeholder status; regenerated next. But when this entry
                 # clears the leave on a row with no punches at all,
@@ -502,11 +508,13 @@ async def bulk_override_punches(
                     leave_type=final_leave,
                     remark=final_remark,
                     overtime_hours=final_overtime,
+                    late_leave_reason=final_late_reason,
                 )
             elif (
                 leave_type is not None
                 or remark is not None
                 or overtime_hours is not None
+                or late_reason is not None
             ):
                 # No existing summary yet — create one with ABSENT placeholder;
                 # generate_daily_summary will overwrite the status. Skipped when
@@ -521,6 +529,7 @@ async def bulk_override_punches(
                     leave_type=leave_type,
                     remark=remark,
                     overtime_hours=overtime_hours,
+                    late_leave_reason=late_reason,
                 )
 
         # Recalculate summary (pass the calendar-accurate day_kind so weekend /
