@@ -21,6 +21,9 @@ class AttendanceStatus(str, enum.Enum):
     LEAVE = "LEAVE"
 
 
+LATE_LEAVE_REASONS: frozenset[str] = frozenset({"ASSIGNED_OVERTIME", "PERSONAL"})
+
+
 class DailyAttendanceSummary(SQLModel, table=True):
     """Daily attendance summaries — one row per employee per date."""
 
@@ -43,3 +46,4 @@ class DailyAttendanceSummary(SQLModel, table=True):
         default=None,
         sa_column=sa.Column(sa.Numeric(3, 1), nullable=True),
     )
+    late_leave_reason: Optional[str] = Field(default=None, max_length=30)

@@ -254,6 +254,9 @@ async def generate_daily_summary(
     existing_overtime_hours = (
         existing_rows[0].overtime_hours if existing_rows else None
     )
+    existing_late_leave_reason = (
+        existing_rows[0].late_leave_reason if existing_rows else None
+    )
 
     first_log = await attendance_repository.find_first_clock_in(session, emp_id, date)
     last_log = await attendance_repository.find_last_clock_out(session, emp_id, date)
@@ -292,6 +295,7 @@ async def generate_daily_summary(
         leave_type=existing_leave_type,
         remark=existing_remark,
         overtime_hours=existing_overtime_hours,
+        late_leave_reason=existing_late_leave_reason,
     )
 
     return summary

@@ -31,12 +31,14 @@ async def upsert_summary(
     leave_type: str | None = None,
     remark: str | None = None,
     overtime_hours: decimal.Decimal | None | object = _UNSET,
+    late_leave_reason: str | None | object = _UNSET,
 ) -> DailyAttendanceSummary:
     """Insert or update a daily attendance summary by (emp_id, date).
 
-    `overtime_hours` uses a sentinel default so existing callers that don't
-    care (punch / summary recompute paths) leave the persisted value alone,
-    while bulk-override can explicitly pass None to clear it.
+    `overtime_hours` and `late_leave_reason` use a sentinel default so
+    existing callers that don't care (punch / summary recompute paths) leave
+    the persisted value alone, while bulk-override can explicitly pass None
+    to clear it.
     """
     statement = select(DailyAttendanceSummary).where(
         DailyAttendanceSummary.emp_id == emp_id,
@@ -53,6 +55,8 @@ async def upsert_summary(
         existing.remark = remark
         if overtime_hours is not _UNSET:
             existing.overtime_hours = overtime_hours  # type: ignore[assignment]
+        if late_leave_reason is not _UNSET:
+            existing.late_leave_reason = late_leave_reason  # type: ignore[assignment]
         session.add(existing)
         await session.commit()
         await session.refresh(existing)
@@ -67,6 +71,7 @@ async def upsert_summary(
         leave_type=leave_type,
         remark=remark,
         overtime_hours=None if overtime_hours is _UNSET else overtime_hours,  # type: ignore[arg-type]
+        late_leave_reason=None if late_leave_reason is _UNSET else late_leave_reason,  # type: ignore[arg-type]
     )
     session.add(summary)
     await session.commit()
