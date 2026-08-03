@@ -45,6 +45,19 @@ async def submit_month(
             detail="Cannot submit for another employee",
         )
 
+    missing = await monthly_submission_service.find_missing_late_reason_dates(
+        session, emp_id=body.emp_id, year=body.year, month=body.month
+    )
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "late_reason_missing",
+                "message": "延後下班原因未填寫完成，無法送單",
+                "dates": [d.isoformat() for d in missing],
+            },
+        )
+
     row = await monthly_submission_service.submit_month(
         session, emp_id=body.emp_id, year=body.year, month=body.month
     )
