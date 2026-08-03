@@ -566,6 +566,13 @@ async def export_attendance(
         submission_filter=submission_filter,
     )
 
+    # Seed/test accounts (default HR01/ADMIN) never reach any export format —
+    # even an explicit emp_id filter naming them (meeting decision 2026-08-03).
+    excluded = set(
+        await system_config_repository.get_export_excluded_emp_ids(session)
+    )
+    all_summaries = [s for s in all_summaries if s.emp_id not in excluded]
+
     # --- determine employees in scope for the *export* (independent of
     #     whether each one happens to have a real summary in this range).
     #     Needed so the holiday/weekend filler logic can emit continuity
@@ -591,6 +598,8 @@ async def export_attendance(
             emp = await employee_repository.find_by_id(session, eid)
             if emp is not None:
                 emp_map[eid] = emp
+
+    emp_map = {eid: e for eid, e in emp_map.items() if eid not in excluded}
 
     # --- preload reasons keyed by summary_id ---
     summary_ids = [s.id for s in all_summaries if s.id is not None]
