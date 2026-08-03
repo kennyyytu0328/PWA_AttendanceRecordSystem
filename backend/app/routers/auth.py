@@ -12,7 +12,11 @@ from app.middleware.rate_limiter import (
     record_failed_attempt,
     reset_rate_limit,
 )
-from app.repositories import authenticator_repository, webauthn_challenge_repository
+from app.repositories import (
+    authenticator_repository,
+    employee_repository,
+    webauthn_challenge_repository,
+)
 from app.schemas.auth import ChangePasswordRequest, LoginRequest, TokenResponse
 from app.services import employee_service, webauthn_service
 
@@ -47,9 +51,19 @@ async def login(
 
 
 @router.get("/me")
-async def me(user: dict = Depends(get_current_user)):
-    """Return the current authenticated user's identity."""
-    return {"emp_id": user["sub"], "role": user["role"]}
+async def me(
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Return the current user's identity plus shift times (for the punch
+    page's late-leave dialog and the monthly-override required-reason rule)."""
+    result = {"emp_id": user["sub"], "role": user["role"]}
+    employee = await employee_repository.find_by_id(session, user["sub"])
+    if employee is not None:
+        result["name"] = employee.name
+        result["shift_start_time"] = employee.shift_start_time.strftime("%H:%M")
+        result["shift_end_time"] = employee.shift_end_time.strftime("%H:%M")
+    return result
 
 
 @router.post("/change-password", status_code=200)
