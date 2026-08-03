@@ -47,7 +47,11 @@
     "reasonSubmitting": "Submitting...",
     "reasonSubmitted": "Reason submitted successfully",
     "reasonSubmitFailed": "Failed to submit reason",
-    "punchFailed": "Punch failed"
+    "punchFailed": "Punch failed",
+    "lateReasonTitle": "Your punch time is past your scheduled end time of {time}. Please select a reason:",
+    "lateReasonAssignedOvertime": "A: Supervisor-assigned overtime (file an overtime request separately)",
+    "lateReasonPersonal": "B: Stayed in the office for personal reasons",
+    "lateReasonConfirm": "Confirm"
   },
   "dashboard": {
     "title": "Dashboard",

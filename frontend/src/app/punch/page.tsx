@@ -15,21 +15,30 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { useTranslation } from "@/lib/i18n";
 import { useGeolocation } from "@/hooks/useGeolocation";
+import { useMyProfile } from "@/hooks/useMyProfile";
 import { apiClient } from "@/lib/api";
 import { BackButton } from "@/components/BackButton";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { LateLeaveReasonModal } from "@/components/LateLeaveReasonModal";
 import { deriveDayKindFromDate } from "@/lib/day-kind";
-import type { DayKind, PunchResponse, WorkdaysResponse } from "@/types";
+import type {
+  DayKind,
+  LateLeaveReason,
+  PunchResponse,
+  WorkdaysResponse,
+} from "@/types";
 
 async function submitPunch(
   latitude: number,
   longitude: number,
   accuracy: number,
+  lateLeaveReason?: LateLeaveReason | null,
 ): Promise<PunchResponse> {
   return apiClient.post<PunchResponse>("/api/attendance/punch", {
     latitude,
     longitude,
     accuracy,
+    ...(lateLeaveReason ? { late_leave_reason: lateLeaveReason } : {}),
   });
 }
 
@@ -38,6 +47,7 @@ export default function PunchPage() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { position, requestPosition } = useGeolocation();
   const { t } = useTranslation();
+  const { profile } = useMyProfile(isAuthenticated);
 
   const [punchResult, setPunchResult] = useState<PunchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +63,9 @@ export default function PunchPage() {
   const [reasonSubmitted, setReasonSubmitted] = useState(false);
   const [reasonSubmitting, setReasonSubmitting] = useState(false);
   const [reasonError, setReasonError] = useState<string | null>(null);
+  const [reasonModalOpen, setReasonModalOpen] = useState(false);
+  const [lateReason, setLateReason] = useState<LateLeaveReason>("PERSONAL");
+  const lateReasonRef = useRef<LateLeaveReason | null>(null);
   const pendingPunch = useRef(false);
   const submitLockRef = useRef(false);
 
@@ -62,13 +75,13 @@ export default function PunchPage() {
     }
   }, [authLoading, isAuthenticated, router]);
 
-  // Fetch today's calendar day_kind to handle 補班 Saturday — the only flip
-  // that can re-enable the button. Sun and weekdays are always correct via
-  // the local weekday guess, so skip the probe for them.
+  // Fetch today's calendar day_kind. Besides handling 補班 Saturday (the
+  // only flip that can re-enable the button), the late-leave-reason dialog
+  // must also stay silent on weekday national holidays — so the calendar is
+  // probed on every load, not just when the local guess says REST_DAY.
   useEffect(() => {
     if (!isAuthenticated) return;
     const today = new Date();
-    if (deriveDayKindFromDate(today) !== "REST_DAY") return;
     let cancelled = false;
     const y = today.getFullYear();
     const m = today.getMonth() + 1;
@@ -93,6 +106,19 @@ export default function PunchPage() {
   const isWeekendLocked =
     todayKind === "REGULAR_LEAVE" || todayKind === "REST_DAY";
 
+  const isWorkdayKind =
+    todayKind === "WORKDAY" || todayKind === "MAKEUP_WORKDAY";
+
+  function nowHHMM(): string {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  }
+
+  const needsLateReason = (): boolean =>
+    isWorkdayKind &&
+    !!profile?.shift_end_time &&
+    nowHHMM() > profile.shift_end_time;
+
   // When geolocation resolves after a punch request, submit the punch
   useEffect(() => {
     if (
@@ -116,6 +142,7 @@ export default function PunchPage() {
           position.latitude!,
           position.longitude!,
           position.accuracy!,
+          lateReasonRef.current,
         );
         setPunchResult(result);
 
@@ -138,6 +165,7 @@ export default function PunchPage() {
       } finally {
         setIsSubmitting(false);
         submitLockRef.current = false;
+        lateReasonRef.current = null;
       }
     };
 
@@ -188,6 +216,7 @@ export default function PunchPage() {
           position.latitude,
           position.longitude,
           position.accuracy,
+          lateReasonRef.current,
         );
         setPunchResult(result);
 
@@ -210,6 +239,7 @@ export default function PunchPage() {
       } finally {
         setIsSubmitting(false);
         submitLockRef.current = false;
+        lateReasonRef.current = null;
       }
     } else {
       // Request geolocation; useEffect will handle submission when it arrives
@@ -217,6 +247,21 @@ export default function PunchPage() {
       requestPosition();
     }
   }, [position.latitude, position.longitude, position.accuracy, requestPosition, t]);
+
+  const handleReasonConfirm = useCallback(() => {
+    lateReasonRef.current = lateReason;
+    setReasonModalOpen(false);
+    handlePunch();
+  }, [lateReason, handlePunch]);
+
+  function handlePunchClick() {
+    if (needsLateReason() && lateReasonRef.current === null) {
+      setLateReason("PERSONAL");
+      setReasonModalOpen(true);
+      return;
+    }
+    handlePunch();
+  }
 
   if (authLoading || !isAuthenticated) {
     return null;
@@ -252,7 +297,7 @@ export default function PunchPage() {
           <motion.button
             type="button"
             disabled={isLoading || isWeekendLocked}
-            onClick={handlePunch}
+            onClick={handlePunchClick}
             whileTap={isLoading || isWeekendLocked ? undefined : { scale: 0.95 }}
             className="flex h-48 w-48 flex-col items-center justify-center rounded-full bg-gradient-to-br from-[#4ec6c1] to-[#6dcf7c] text-white shadow-xl transition-colors hover:from-[#45b5b0] hover:to-[#5fc06e] focus:ring-4 focus:ring-[#4ec6c1]/40 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -401,6 +446,14 @@ export default function PunchPage() {
           )}
         </AnimatePresence>
       </div>
+
+      <LateLeaveReasonModal
+        open={reasonModalOpen}
+        shiftEnd={profile?.shift_end_time ?? ""}
+        value={lateReason}
+        onChange={setLateReason}
+        onConfirm={handleReasonConfirm}
+      />
     </div>
   );
 }

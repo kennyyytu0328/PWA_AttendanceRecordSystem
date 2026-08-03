@@ -88,13 +88,33 @@ const PUNCH_RESULT = {
   summary_id: null,
 };
 
+/** Routes the shared apiClient.get mock by path. `/api/auth/me` defaults to
+ * a profile with no shift_end_time so pre-existing tests (which never set
+ * up a late-reason scenario) keep going straight through the direct-submit
+ * path, unaffected by the late-leave-reason dialog wiring. */
+function mockGetByUrl(overrides: { readonly authMe?: Record<string, unknown> } = {}) {
+  mockGet.mockImplementation((url: string) => {
+    if (url.startsWith("/api/auth/me")) {
+      return Promise.resolve({
+        emp_id: "EMP100",
+        role: "EMPLOYEE",
+        ...overrides.authMe,
+      });
+    }
+    if (url.startsWith("/api/reasons/me")) {
+      return Promise.resolve([]);
+    }
+    return Promise.resolve({ days: [] });
+  });
+}
+
 beforeEach(() => {
   // 2026-07-17 is a Friday — well clear of weekend-lock logic.
   vi.setSystemTime(new Date("2026-07-17T09:00:00+08:00"));
   mockPost.mockReset();
   mockGet.mockReset();
   mockRequestPosition.mockReset();
-  mockGet.mockResolvedValue([]);
+  mockGetByUrl();
   mockPost.mockImplementation(
     () =>
       new Promise((resolve) => {
@@ -136,5 +156,55 @@ describe("PunchPage double-submit lock", () => {
     });
 
     expect(mockPost).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("PunchPage late-leave reason dialog", () => {
+  it("opens the late-reason modal when punching after shift end and sends the reason", async () => {
+    mockGetByUrl({ authMe: { shift_end_time: "17:30" } });
+    vi.setSystemTime(new Date("2026-07-22T18:31:00")); // Wed after 17:30
+
+    render(<PunchPage />);
+
+    // Let the /api/auth/me fetch resolve and the profile state settle
+    // before clicking, so needsLateReason() sees the loaded shift_end_time.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /punch/i }));
+
+    // modal appears instead of immediate submit:
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(mockPost).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /確認|Confirm/ }));
+
+    await waitFor(() => {
+      expect(mockPost).toHaveBeenCalledWith(
+        "/api/attendance/punch",
+        expect.objectContaining({ late_leave_reason: "PERSONAL" }),
+      );
+    });
+  });
+
+  it("does not open the modal before shift end", async () => {
+    mockGetByUrl({ authMe: { shift_end_time: "17:30" } });
+    vi.setSystemTime(new Date("2026-07-22T17:30:00")); // exactly on time
+
+    render(<PunchPage />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /punch/i }));
+
+    await waitFor(() => expect(mockPost).toHaveBeenCalled());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(mockPost).toHaveBeenCalledWith(
+      "/api/attendance/punch",
+      expect.not.objectContaining({ late_leave_reason: expect.anything() }),
+    );
   });
 });

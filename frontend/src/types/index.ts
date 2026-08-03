@@ -73,6 +73,16 @@ export interface AuthUser {
   readonly role: Role;
 }
 
+export type LateLeaveReason = "ASSIGNED_OVERTIME" | "PERSONAL";
+
+export interface MyProfile {
+  readonly emp_id: string;
+  readonly role: Role;
+  readonly name?: string;
+  readonly shift_start_time?: string;
+  readonly shift_end_time?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Attendance
 // ---------------------------------------------------------------------------
@@ -80,6 +90,7 @@ export interface PunchRequest {
   readonly latitude: number;
   readonly longitude: number;
   readonly accuracy: number;
+  readonly late_leave_reason?: LateLeaveReason;
 }
 
 export interface AttendanceLog {

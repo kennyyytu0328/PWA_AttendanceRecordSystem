@@ -47,7 +47,11 @@
     "reasonSubmitting": "提交中...",
     "reasonSubmitted": "原因已成功提交",
     "reasonSubmitFailed": "提交原因失敗",
-    "punchFailed": "打卡失敗"
+    "punchFailed": "打卡失敗",
+    "lateReasonTitle": "您填寫的時間已超過您的班別 {time} 應下班時間，請勾選以下原因：",
+    "lateReasonAssignedOvertime": "A:主管指派加班·另外依程序填寫加班單",
+    "lateReasonPersonal": "B:因個人原因留在辦公室",
+    "lateReasonConfirm": "確認"
   },
   "dashboard": {
     "title": "儀表板",
