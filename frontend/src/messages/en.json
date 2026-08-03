@@ -234,7 +234,13 @@
     "orgScopingOn": "On — managers see only their team",
     "orgScopingOff": "Off — managers see everyone (default)",
     "orgScopingSaved": "Scoping setting saved",
-    "orgScopingSaveError": "Failed to save scoping setting"
+    "orgScopingSaveError": "Failed to save scoping setting",
+    "overrideLock": "Month-end lock",
+    "overrideLockHint": "While locked, employees and managers cannot edit or submit monthly attendance; HR/ADMIN are unaffected.",
+    "overrideLockOn": "Locked — click to release",
+    "overrideLockOff": "Unlocked — click to lock",
+    "overrideLockSaved": "Lock state updated",
+    "overrideLockSaveError": "Update failed, please retry"
   },
   "team": {
     "title": "Team Attendance",
@@ -365,7 +371,8 @@
     "lateReasonPersonalShort": "B: Personal reasons",
     "lateReasonMissingTitle": "{count} day(s) need a late-leave reason",
     "lateReasonMissingBody": "These dates have a clock-out past the scheduled end time. Select a late-leave reason before submitting:",
-    "lateReasonMissingHint": "Late clock-out needs a reason"
+    "lateReasonMissingHint": "Late clock-out needs a reason",
+    "lockedBanner": "Month-end settlement in progress — monthly override is temporarily closed. Contact HR with questions."
   },
   "calendarStatus": {
     "title": "Workday Calendar Status",

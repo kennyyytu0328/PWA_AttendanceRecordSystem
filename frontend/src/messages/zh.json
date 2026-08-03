@@ -234,7 +234,13 @@
     "orgScopingOn": "開啟 — 主管僅能看到自己的團隊",
     "orgScopingOff": "關閉 — 主管可看到全部員工（預設）",
     "orgScopingSaved": "範圍設定已儲存",
-    "orgScopingSaveError": "儲存範圍設定失敗"
+    "orgScopingSaveError": "儲存範圍設定失敗",
+    "overrideLock": "月結鎖定",
+    "overrideLockHint": "鎖定後，一般員工與主管無法使用月度打卡修改與本月送單；HR/ADMIN 不受影響。",
+    "overrideLockOn": "鎖定中 — 點擊釋放",
+    "overrideLockOff": "未鎖定 — 點擊鎖定",
+    "overrideLockSaved": "月結鎖定狀態已更新",
+    "overrideLockSaveError": "更新失敗，請稍後再試"
   },
   "team": {
     "title": "團隊考勤",
@@ -368,7 +374,8 @@
     "lateReasonPersonalShort": "B:因個人原因留在辦公室",
     "lateReasonMissingTitle": "有 {count} 天需勾選延後下班原因",
     "lateReasonMissingBody": "以下日期的下班時間已超過班別應下班時間，請先勾選「延後下班原因」再送單：",
-    "lateReasonMissingHint": "延後下班需勾選原因"
+    "lateReasonMissingHint": "延後下班需勾選原因",
+    "lockedBanner": "人資月結作業中，月度打卡修改暫停開放，如有問題請聯絡人資。"
   },
   "calendarStatus": {
     "title": "工作日行事曆狀態",

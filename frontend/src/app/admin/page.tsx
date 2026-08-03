@@ -6,6 +6,7 @@ import { BackButton } from "@/components/BackButton";
 import { LeaveTypesTab } from "@/components/admin/LeaveTypesTab";
 import { RanksTab } from "@/components/admin/RanksTab";
 import { OrgScopingSection } from "@/components/admin/OrgScopingSection";
+import { OverrideLockSection } from "@/components/admin/OverrideLockSection";
 import { ranksApi } from "@/lib/api/org-hierarchy";
 import { useEffect, useState } from "react";
 
@@ -1248,6 +1249,7 @@ export default function AdminPage() {
           <EmployeeManagementSection userRole={userRole} currentEmpId={currentEmpId} departments={departments} />
           <RanksTab />
           <OrgScopingSection />
+          <OverrideLockSection />
           <LeaveTypesTab />
           <OfficeLocationSection />
           <GracePeriodSection />

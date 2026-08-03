@@ -22,17 +22,19 @@ vi.mock("@/lib/i18n", () => ({
   }),
 }));
 
+const mockUseAuth = vi.fn();
 vi.mock("@/lib/auth-context", () => ({
-  useAuth: () => ({
-    user: { emp_id: "EMP001", role: "EMPLOYEE" },
-    token: "tok",
-    isAuthenticated: true,
-    isLoading: false,
-    login: vi.fn(),
-    loginWithToken: vi.fn(),
-    logout: vi.fn(),
-  }),
+  useAuth: () => mockUseAuth(),
 }));
+mockUseAuth.mockReturnValue({
+  user: { emp_id: "EMP001", role: "EMPLOYEE" },
+  token: "tok",
+  isAuthenticated: true,
+  isLoading: false,
+  login: vi.fn(),
+  loginWithToken: vi.fn(),
+  logout: vi.fn(),
+});
 
 vi.mock("@/components/BackButton", () => ({
   BackButton: () => <div data-testid="back-button" />,
@@ -76,6 +78,18 @@ vi.mock("@/lib/api/monthly-submissions", () => ({
     getStatus: (...args: unknown[]) => mockGetStatus(...args),
   },
 }));
+
+const mockOverrideLockGet = vi.fn();
+const mockOverrideLockSet = vi.fn();
+vi.mock("@/lib/api/override-lock", () => ({
+  overrideLockApi: {
+    get: (...args: unknown[]) => mockOverrideLockGet(...args),
+    set: (...args: unknown[]) => mockOverrideLockSet(...args),
+  },
+}));
+// Default: unlocked, so pre-existing tests (which never touch the lock)
+// keep behaving exactly as before.
+mockOverrideLockGet.mockResolvedValue({ locked: false });
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -660,5 +674,57 @@ describe("MonthlyOverridePage overtime punch-time validation", () => {
       date: "2026-05-01",
       overtime_hours: 2,
     });
+  });
+});
+
+describe("MonthlyOverridePage month-end override lock", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    wireApi();
+    mockGetStatus.mockResolvedValue({ submitted: false, submitted_at: null });
+    mockUseAuth.mockReturnValue({
+      user: { emp_id: "EMP001", role: "EMPLOYEE" },
+      token: "tok",
+      isAuthenticated: true,
+      isLoading: false,
+      login: vi.fn(),
+      loginWithToken: vi.fn(),
+      logout: vi.fn(),
+    });
+    mockOverrideLockGet.mockResolvedValue({ locked: true });
+  });
+
+  it("locks the page for employees when override lock is on", async () => {
+    await renderPage();
+
+    expect(
+      await screen.findByTestId("override-lock-banner"),
+    ).toBeInTheDocument();
+    expect(screen.queryAllByTestId("clock-in-input")).toHaveLength(0);
+    expect(
+      screen.getByRole("button", { name: /monthlyOverride\.submitMonth/ }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /monthlyOverride\.save$/ }),
+    ).toBeDisabled();
+  });
+
+  it("does not lock the page for HR when override lock is on", async () => {
+    mockUseAuth.mockReturnValue({
+      user: { emp_id: "HR001", role: "HR" },
+      token: "tok",
+      isAuthenticated: true,
+      isLoading: false,
+      login: vi.fn(),
+      loginWithToken: vi.fn(),
+      logout: vi.fn(),
+    });
+    await renderPage();
+
+    await waitFor(() => {
+      expect(mockOverrideLockGet).toHaveBeenCalled();
+    });
+    expect(screen.queryByTestId("override-lock-banner")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("clock-in-input").length).toBeGreaterThan(0);
   });
 });

@@ -24,6 +24,7 @@ import {
   monthlySubmissionsApi,
   type SubmissionStatus,
 } from "@/lib/api/monthly-submissions";
+import { overrideLockApi } from "@/lib/api/override-lock";
 import { useAuth } from "@/lib/auth-context";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { useTranslation } from "@/lib/i18n";
@@ -280,6 +281,11 @@ export default function MonthlyOverridePage() {
   const [submissionStatus, setSubmissionStatus] =
     useState<SubmissionStatus | null>(null);
 
+  // Month-end override lock (HR-controlled). Locks EMPLOYEE/MANAGER out of
+  // editing and submitting; HR/ADMIN are unaffected.
+  const [overrideLocked, setOverrideLocked] = useState(false);
+  const pageLocked = overrideLocked && !isHrPlus;
+
   // Submit-month flow
   const [warningOpen, setWarningOpen] = useState(false);
   const [overtimeModalOpen, setOvertimeModalOpen] = useState(false);
@@ -331,6 +337,22 @@ export default function MonthlyOverridePage() {
       return prev + 1;
     });
     setMessage(null);
+  }, []);
+
+  // Fetch the month-end override lock state once on mount.
+  useEffect(() => {
+    let cancelled = false;
+    overrideLockApi
+      .get()
+      .then((data) => {
+        if (!cancelled) setOverrideLocked(Boolean(data?.locked));
+      })
+      .catch(() => {
+        // silent — defaults to unlocked
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Fetch employees for HR+
@@ -398,6 +420,7 @@ export default function MonthlyOverridePage() {
         } else {
           isEditable = true;
         }
+        isEditable = isEditable && !pageLocked;
         return {
           date: day.date,
           weekday_zh: day.weekday_zh,
@@ -428,7 +451,7 @@ export default function MonthlyOverridePage() {
     } finally {
       setIsLoading(false);
     }
-  }, [year, month, isHrPlus, selectedEmpId]);
+  }, [year, month, isHrPlus, selectedEmpId, pageLocked]);
 
   useEffect(() => {
     fetchData();
@@ -877,7 +900,7 @@ export default function MonthlyOverridePage() {
             <button
               type="button"
               onClick={handleSubmitMonth}
-              disabled={pendingSubmit || !targetEmpId}
+              disabled={pendingSubmit || !targetEmpId || pageLocked}
               className="inline-flex items-center gap-2 rounded-lg border border-[#4ec6c1] bg-white px-5 py-2 text-sm font-medium text-[#4ec6c1] shadow-sm transition-colors hover:bg-[#e8faf9] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Send className="h-4 w-4" />
@@ -888,7 +911,7 @@ export default function MonthlyOverridePage() {
             <button
               type="button"
               onClick={handleSave}
-              disabled={isSaving}
+              disabled={isSaving || pageLocked}
               className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#4ec6c1] to-[#6dcf7c] px-5 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:from-[#45b5b0] hover:to-[#5fc06e] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Save className="h-4 w-4" />
@@ -938,6 +961,18 @@ export default function MonthlyOverridePage() {
           >
             <span aria-hidden="true">⏰</span>
             <span>{t("monthlyOverride.timeFormatHint")}</span>
+          </div>
+        )}
+
+        {/* Month-end override lock banner — EMPLOYEE/MANAGER only */}
+        {!isLoading && pageLocked && (
+          <div
+            role="alert"
+            data-testid="override-lock-banner"
+            className="mb-3 flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-800"
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{t("monthlyOverride.lockedBanner")}</span>
           </div>
         )}
 
