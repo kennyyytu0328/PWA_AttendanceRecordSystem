@@ -21,6 +21,7 @@ import { BackButton } from "@/components/BackButton";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { LateLeaveReasonModal } from "@/components/LateLeaveReasonModal";
 import { deriveDayKindFromDate } from "@/lib/day-kind";
+import { localDateString } from "@/lib/date";
 import type {
   DayKind,
   LateLeaveReason,
@@ -85,7 +86,7 @@ export default function PunchPage() {
     let cancelled = false;
     const y = today.getFullYear();
     const m = today.getMonth() + 1;
-    const iso = today.toISOString().slice(0, 10);
+    const iso = localDateString(today);
     apiClient
       .get<WorkdaysResponse>(`/api/config/workdays?year=${y}&month=${m}`)
       .then((data) => {

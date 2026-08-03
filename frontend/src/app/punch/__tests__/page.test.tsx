@@ -92,7 +92,12 @@ const PUNCH_RESULT = {
  * a profile with no shift_end_time so pre-existing tests (which never set
  * up a late-reason scenario) keep going straight through the direct-submit
  * path, unaffected by the late-leave-reason dialog wiring. */
-function mockGetByUrl(overrides: { readonly authMe?: Record<string, unknown> } = {}) {
+function mockGetByUrl(
+  overrides: {
+    readonly authMe?: Record<string, unknown>;
+    readonly workdays?: { readonly days: readonly Record<string, unknown>[] };
+  } = {},
+) {
   mockGet.mockImplementation((url: string) => {
     if (url.startsWith("/api/auth/me")) {
       return Promise.resolve({
@@ -103,6 +108,9 @@ function mockGetByUrl(overrides: { readonly authMe?: Record<string, unknown> } =
     }
     if (url.startsWith("/api/reasons/me")) {
       return Promise.resolve([]);
+    }
+    if (url.startsWith("/api/config/workdays")) {
+      return Promise.resolve(overrides.workdays ?? { days: [] });
     }
     return Promise.resolve({ days: [] });
   });
@@ -206,5 +214,53 @@ describe("PunchPage late-leave reason dialog", () => {
       "/api/attendance/punch",
       expect.not.objectContaining({ late_leave_reason: expect.anything() }),
     );
+  });
+});
+
+describe("PunchPage day-kind calendar probe", () => {
+  it("keys the calendar lookup by local date, not UTC (Monday morning must not match Sunday)", async () => {
+    // Monday 2026-07-20 07:45 local (Asia/Taipei, TZ pinned above). Before
+    // 08:00 local, `toISOString().slice(0, 10)` yields the UTC date, which
+    // is still Sunday the 19th — a stale UTC-rollback bug (see
+    // frontend/src/lib/date.ts) that would match the wrong calendar entry
+    // and wrongly lock the button as if today were 例假日.
+    vi.setSystemTime(new Date("2026-07-20T07:45:00"));
+    mockGetByUrl({
+      workdays: {
+        days: [
+          {
+            date: "2026-07-19",
+            weekday_zh: "日",
+            is_holiday: true,
+            description: "例假日",
+            is_makeup_workday: false,
+            day_kind: "REGULAR_LEAVE",
+          },
+          {
+            date: "2026-07-20",
+            weekday_zh: "一",
+            is_holiday: false,
+            description: "",
+            is_makeup_workday: false,
+            day_kind: "WORKDAY",
+          },
+        ],
+      },
+    });
+
+    render(<PunchPage />);
+
+    // Let the workdays probe resolve and its setTodayKind (if any) commit.
+    await waitFor(() =>
+      expect(mockGet).toHaveBeenCalledWith(
+        expect.stringContaining("/api/config/workdays"),
+      ),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole("button", { name: /punch/i })).not.toBeDisabled();
+    expect(screen.queryByTestId("weekend-lock-notice")).not.toBeInTheDocument();
   });
 });
