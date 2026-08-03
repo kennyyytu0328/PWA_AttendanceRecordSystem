@@ -42,7 +42,8 @@
 - **必填條件**（per row）：`day_kind ∈ {WORKDAY, MAKEUP_WORKDAY}` 且當日最後下班時間（不論來源：APP 實際打卡、NFC 補卡、月度補填）**嚴格晚於** `shift_end_time`，而 `late_leave_reason` 為空 → 該列必填。
   - 17:30 整 = 準時，免填。
   - 忘打下班卡且尚未補填下班時間的日子：下班欄為空 → 不構成「晚於」→ 暫不必填；一旦補填了超過班別的時間，即轉為必填。
-  - 規則對 LEAVE 日一體適用（有請假但仍有超時下班紀錄的罕見情況，照樣必填）。
+  - **請假/休假日免填**：`leave_type` 有值的列一律免填——**除非**該 `leave_type` 屬於「仍需填寫下班時間」的類型（如出差）。此類型清單存 `system_config` key `late_reason_required_leave_types`，value `{"leave_types": ["出差"]}`（預設值，可設定；比照 `export_excluded_emp_ids` 模式，不做管理 UI）。出差日補填的下班時間若晚於班別下班時間 → 照樣必填。
+  - 免填規則前後端一體適用（月度頁的列掃描與 `POST /api/monthly-submissions` 的 server-side 驗證用同一判定）。
 - **前端**：未填的必填列顯示醒目提示（比照 `rowNeedsPunchForOvertime` 的紅色列 highlight + 欄位紅框 + ⚠）。按「本月送單」時掃描**全月所有列**，凡必填未填 → 跳 modal 列出日期並**硬擋**（比照 `OvertimePunchModal`，無「繼續送出」選項）。
 - **後端**（防繞過，已與使用者確認要做）：`POST /api/monthly-submissions` 建立前用同一規則掃描該月 summaries，發現必填未填 → `400`，`detail` 帶缺漏日期清單。日別分類用 `classify_day_kind`（與 #31 一致），時間比較用 naive `time()` 比對（與既有 tardiness 邏輯一致）。
 
@@ -120,7 +121,7 @@
 - punch 帶 reason → summary 寫入；同日再打卡覆蓋
 - `generate_daily_summary` round-trip `late_leave_reason`（重算不丟值）
 - bulk override：設值 / explicit null 清除 / 省略保留（比照 `test_bulk_override_clear.py`）
-- monthly-submissions 閘門：缺必填 → 400 + 日期清單；補齊後 → 201；非工作日超時列不擋
+- monthly-submissions 閘門：缺必填 → 400 + 日期清單；補齊後 → 201；非工作日超時列不擋；請假日（leave_type 有值）不擋；出差日（在 `late_reason_required_leave_types` 清單內）超時仍擋；清單未設定時用預設值 `["出差"]`
 - override lock：locked 時 EMPLOYEE/MANAGER 403、HR/ADMIN 通過；GET/PUT 權限
 - HRM export：欄位、序號、日期不補零、單次打卡日僅 1 列、無打卡日 0 列
 - 排除清單：四種格式都排除、指定 emp_id 也排除、config 未設時用預設值
