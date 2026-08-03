@@ -964,6 +964,18 @@ export default function MonthlyOverridePage() {
           </div>
         )}
 
+        {/* Schedule-confirmation notice — visible to all roles */}
+        {!isLoading && (
+          <div
+            role="note"
+            data-testid="schedule-notice"
+            className="mb-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-100 px-3 py-2 text-sm font-medium text-amber-900"
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <span>{t("monthlyOverride.scheduleNotice")}</span>
+          </div>
+        )}
+
         {/* Month-end override lock banner — EMPLOYEE/MANAGER only */}
         {!isLoading && pageLocked && (
           <div

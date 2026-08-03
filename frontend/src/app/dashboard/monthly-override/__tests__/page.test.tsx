@@ -8,10 +8,18 @@ import { ApiError } from "@/lib/api";
 // Mocks
 // ---------------------------------------------------------------------------
 
+// Real zh copy for keys whose rendered text itself is under test (e.g. the
+// schedule-confirmation notice). Every other key falls back to echoing the
+// key itself, which the rest of this suite asserts against directly.
+const REAL_ZH_TEXT: Record<string, string> = {
+  "monthlyOverride.scheduleNotice":
+    "備註：本月份排班表已依個人意願與公司工作需求排定，若對班表有疑慮或錯誤者，請與單位主管和人資進行修改確認，若逾期未提出，則視為同意本月排班，謝謝。",
+};
+
 vi.mock("@/lib/i18n", () => ({
   useTranslation: () => ({
     t: (k: string, params?: Record<string, string | number>) => {
-      if (!params) return k;
+      if (!params) return REAL_ZH_TEXT[k] ?? k;
       return Object.entries(params).reduce<string>(
         (acc, [pk, pv]) => acc.replace(`{${pk}}`, String(pv)),
         k,
@@ -242,6 +250,15 @@ describe("MonthlyOverridePage submission flow", () => {
       expect(badge).toHaveTextContent("monthlyOverride.submitted");
       expect(badge.textContent ?? "").toMatch(/2026-05-10/);
     });
+  });
+
+  it("renders the schedule confirmation notice", async () => {
+    mockGetStatus.mockResolvedValue({ submitted: false, submitted_at: null });
+    await renderPage();
+
+    expect(await screen.findByTestId("schedule-notice")).toHaveTextContent(
+      /本月份排班表已依個人意願/,
+    );
   });
 
   it("opens WarningModal listing abnormal days when 'submitMonth' is clicked", async () => {

@@ -347,6 +347,7 @@
     "nextMonth": "Next Month",
     "scrollHint": "Tip: swipe sideways to see all columns",
     "timeFormatHint": "Type 4 digits in 24-hour format — the colon is added automatically. e.g. 5:30 PM → type 1730 (not 0530).",
+    "scheduleNotice": "Note: This month's schedule was arranged per personal preference and company needs. If you have concerns or find errors, please confirm changes with your supervisor and HR. Without timely feedback the schedule is deemed accepted. Thank you.",
     "remark": "Remark",
     "leaveType": "Leave Type",
     "leaveTypeNone": "— None —",
