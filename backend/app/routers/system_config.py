@@ -242,6 +242,19 @@ async def set_grace_period(
 
 
 # ---------------------------------------------------------------------------
+# Late-leave-reason required leave types — accessible to any authenticated user
+# ---------------------------------------------------------------------------
+@router.get("/late-reason-leave-types")
+async def get_late_reason_leave_types(
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, list[str]]:
+    """Leave types whose days still require a late-leave reason (e.g. 出差)."""
+    types = await system_config_repository.get_late_reason_required_leave_types(session)
+    return {"leave_types": types}
+
+
+# ---------------------------------------------------------------------------
 # Generic config — ADMIN only
 # ---------------------------------------------------------------------------
 @router.get("/{key}", response_model=SystemConfigResponse)

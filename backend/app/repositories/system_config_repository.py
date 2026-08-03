@@ -136,6 +136,55 @@ async def get_grace_period(session: AsyncSession) -> int:
     return 5
 
 
+_DEFAULT_LATE_REASON_LEAVE_TYPES: list[str] = ["出差"]
+
+
+async def get_late_reason_required_leave_types(session: AsyncSession) -> list[str]:
+    """Leave types (e.g. 出差) whose days still require a late-leave reason."""
+    config = await get_by_key(session, "late_reason_required_leave_types")
+    if config is None:
+        return list(_DEFAULT_LATE_REASON_LEAVE_TYPES)
+    value = config.value
+    if isinstance(value, dict) and "leave_types" in value:
+        return list(value["leave_types"])
+    return list(_DEFAULT_LATE_REASON_LEAVE_TYPES)
+
+
+_DEFAULT_EXPORT_EXCLUDED_EMP_IDS: list[str] = ["HR01", "ADMIN"]
+
+
+async def get_export_excluded_emp_ids(session: AsyncSession) -> list[str]:
+    """Seed/test accounts excluded from every report export format."""
+    config = await get_by_key(session, "export_excluded_emp_ids")
+    if config is None:
+        return list(_DEFAULT_EXPORT_EXCLUDED_EMP_IDS)
+    value = config.value
+    if isinstance(value, dict) and "emp_ids" in value:
+        return list(value["emp_ids"])
+    return list(_DEFAULT_EXPORT_EXCLUDED_EMP_IDS)
+
+
+async def get_monthly_override_locked(session: AsyncSession) -> bool:
+    """Month-end settlement lock — blocks EMPLOYEE/MANAGER monthly edits."""
+    config = await get_by_key(session, "monthly_override_lock")
+    if config is None:
+        return False
+    value = config.value
+    if isinstance(value, dict) and "locked" in value:
+        return bool(value["locked"])
+    return False
+
+
+async def set_monthly_override_locked(
+    session: AsyncSession, locked: bool, updated_by: str | None = None
+) -> bool:
+    await set_config(
+        session, key="monthly_override_lock",
+        value={"locked": bool(locked)}, updated_by=updated_by,
+    )
+    return bool(locked)
+
+
 async def set_config(
     session: AsyncSession,
     key: str,
