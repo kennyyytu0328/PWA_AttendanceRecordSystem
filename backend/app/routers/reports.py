@@ -164,6 +164,24 @@ async def export_report(
         submission_filter, user.get("role", "")
     )
 
+    if format == "hrm":
+        content = await reporting_service.export_attendance_hrm(
+            session,
+            start_date=start_date,
+            end_date=end_date,
+            department=department,
+            emp_id=emp_id,
+            include_terminated=include_terminated,
+            submission_filter=effective_filter,
+        )
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f"attachment; filename=hrm_export_{start_date}_{end_date}.xlsx",
+            },
+        )
+
     content = await reporting_service.export_attendance(
         session,
         start_date=start_date,

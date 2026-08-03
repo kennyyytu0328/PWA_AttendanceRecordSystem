@@ -74,6 +74,15 @@ _FILLER_STATUSES = frozenset(
     {"HOLIDAY", "WEEKEND", "REST_DAY", "REGULAR_LEAVE", "NATIONAL_HOLIDAY"}
 )
 
+HRM_HEADERS = ["序號", "工號", "姓名", "考勤機ID", "刷卡日期", "刷卡時間",
+               "補刷卡假勤類型原因"]
+HRM_PUNCH_LABEL = "APP打卡"  # fixed for every row regardless of punch source
+
+
+def _format_hrm_date(d: datetime.date) -> str:
+    """HRM system wants unpadded YYYY/M/D (e.g. 2026/7/24)."""
+    return f"{d.year}/{d.month}/{d.day}"
+
 
 def _format_shift_time(start: datetime.time, end: datetime.time) -> str:
     return f"{start.strftime('%H:%M')} - {end.strftime('%H:%M')}"
@@ -822,4 +831,71 @@ async def export_attendance(
     for row_values in zh_rows:
         writer.writerow(row_values)
 
+    return output.getvalue()
+
+
+async def export_attendance_hrm(
+    session: AsyncSession,
+    start_date: datetime.date,
+    end_date: datetime.date,
+    department: str | None = None,
+    emp_id: str | None = None,
+    include_terminated: bool = False,
+    submission_filter: Literal["submitted", "unsubmitted", "all"] = "submitted",
+) -> bytes:
+    """HRM-system import format: one xlsx row per punch (first-in, last-out).
+
+    Days without punches (ABSENT / pure-leave / holiday) emit nothing; a
+    single-punch day (first == last, #16: clock-in only) emits one row. The
+    考勤機ID column stays blank and the source label is always APP打卡 —
+    per the 2026-08-03 meeting decision, punch origin is not distinguished.
+    """
+    summaries = await get_daily_report(
+        session,
+        start_date=start_date,
+        end_date=end_date,
+        department=department,
+        emp_id=emp_id,
+        include_terminated=include_terminated,
+        submission_filter=submission_filter,
+    )
+    excluded = set(
+        await system_config_repository.get_export_excluded_emp_ids(session)
+    )
+    summaries = [s for s in summaries if s.emp_id not in excluded]
+
+    name_map: dict[str, str] = {}
+    for eid in {s.emp_id for s in summaries}:
+        emp = await employee_repository.find_by_id(session, eid)
+        name_map[eid] = emp.name if emp else ""
+
+    punch_rows: list[tuple[str, str, datetime.date, datetime.time]] = []
+    for s in summaries:
+        if s.first_clock_in is None:
+            continue
+        punch_rows.append(
+            (s.emp_id, name_map[s.emp_id], s.date, s.first_clock_in.time())
+        )
+        if s.last_clock_out is not None and s.last_clock_out != s.first_clock_in:
+            punch_rows.append(
+                (s.emp_id, name_map[s.emp_id], s.date, s.last_clock_out.time())
+            )
+    punch_rows.sort(key=lambda r: (r[2], r[0], r[3]))
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "HRM Import"
+    bold = Font(bold=True)
+    for col_idx, header in enumerate(HRM_HEADERS, 1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.font = bold
+    for idx, (eid, name, d, t) in enumerate(punch_rows, 1):
+        ws.append([idx, eid, name, None, _format_hrm_date(d),
+                   t.strftime("%H:%M"), HRM_PUNCH_LABEL])
+
+    output = io.BytesIO()
+    wb.save(output)
     return output.getvalue()
