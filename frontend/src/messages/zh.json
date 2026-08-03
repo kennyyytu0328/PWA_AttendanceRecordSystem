@@ -281,6 +281,7 @@
     "format": "格式",
     "export": "匯出",
     "exporting": "匯出中...",
+    "hrmExport": "HRM系統使用",
     "exportSuccess": "報表匯出成功",
     "exportFailed": "匯出報表失敗",
     "generateSummaries": "產生摘要",

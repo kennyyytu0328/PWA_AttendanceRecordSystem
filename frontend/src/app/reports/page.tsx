@@ -408,14 +408,13 @@ function ExportSection() {
     }
   }, [employees, selectedEmployee, department]);
 
-  async function handleExport(e: React.FormEvent) {
-    e.preventDefault();
+  async function doExport(exportFormat: string) {
     setIsExporting(true);
     setMessage(null);
 
     try {
       const params = new URLSearchParams({
-        format,
+        format: exportFormat,
         start_date: startDate,
         end_date: endDate,
       });
@@ -435,7 +434,7 @@ function ExportSection() {
         department: department || undefined,
       } as const;
 
-      if (format === "csv" || format === "xlsx") {
+      if (exportFormat === "csv" || exportFormat === "xlsx" || exportFormat === "hrm") {
         const response = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL ?? ""}/api/reports/export?${params.toString()}`,
           {
@@ -449,7 +448,10 @@ function ExportSection() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = buildExportFilename({ ...filenameParams, format });
+        a.download =
+          exportFormat === "hrm"
+            ? `hrm_export_${startDate}_${endDate}.xlsx`
+            : buildExportFilename({ ...filenameParams, format: exportFormat as "csv" | "xlsx" });
         a.click();
         URL.revokeObjectURL(url);
       } else {
@@ -481,7 +483,13 @@ function ExportSection() {
         {t("reports.exportData")}
       </h2>
 
-      <form onSubmit={handleExport} className="space-y-4">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          doExport(format);
+        }}
+        className="space-y-4"
+      >
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-500">{t("reports.startDate")}</label>
@@ -551,6 +559,14 @@ function ExportSection() {
             className="rounded-lg bg-gradient-to-r from-[#4ec6c1] to-[#6dcf7c] px-4 py-1.5 text-sm font-medium text-white hover:from-[#45b5b0] hover:to-[#5fc06e] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isExporting ? t("reports.exporting") : t("reports.export")}
+          </button>
+          <button
+            type="button"
+            disabled={isExporting}
+            onClick={() => doExport("hrm")}
+            className="rounded-lg border border-[#4ec6c1] bg-white px-4 py-1.5 text-sm font-medium text-[#4ec6c1] hover:bg-[#e8faf9] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {t("reports.hrmExport")}
           </button>
         </div>
       </form>

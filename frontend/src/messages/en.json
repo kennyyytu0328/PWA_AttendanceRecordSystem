@@ -281,6 +281,7 @@
     "format": "Format",
     "export": "Export",
     "exporting": "Exporting...",
+    "hrmExport": "For HRM system",
     "exportSuccess": "Export downloaded successfully",
     "exportFailed": "Failed to export report",
     "generateSummaries": "Generate Summaries",

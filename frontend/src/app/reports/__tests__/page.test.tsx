@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import type { Role } from "@/types";
 
@@ -245,5 +245,37 @@ describe("ReportsPage – new columns and submission filter", () => {
     await waitFor(() => expect(mockGet).toHaveBeenCalled());
 
     expect(await screen.findByText("status.leave")).toBeInTheDocument();
+  });
+});
+
+describe("ExportSection – HRM export button", () => {
+  beforeEach(() => {
+    authState.user = { emp_id: "HR001", role: "HR" };
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(new Blob(["fake xlsx bytes"])),
+    });
+    if (!URL.createObjectURL) {
+      URL.createObjectURL = vi.fn();
+    }
+    if (!URL.revokeObjectURL) {
+      URL.revokeObjectURL = vi.fn();
+    }
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock-url");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+  });
+
+  it("HRM export button fetches format=hrm and downloads xlsx", async () => {
+    render(<ReportsPage />);
+    await waitFor(() => expect(mockGet).toHaveBeenCalled());
+
+    fireEvent.click(await screen.findByRole("button", { name: /HRM系統使用|hrm/i }));
+
+    await waitFor(() => {
+      const url = (global.fetch as Mock).mock.calls.at(-1)![0] as string;
+      expect(url).toContain("/api/reports/export");
+      expect(url).toContain("format=hrm");
+    });
   });
 });
