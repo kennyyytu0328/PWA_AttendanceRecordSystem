@@ -17,7 +17,7 @@ from app.schemas.monthly_submission import (
     SubmissionStatusResponse,
     SubmitMonthRequest,
 )
-from app.services import monthly_submission_service
+from app.services import monthly_submission_service, override_lock_service
 
 router = APIRouter(prefix="/api/monthly-submissions", tags=["monthly-submissions"])
 
@@ -44,6 +44,13 @@ async def submit_month(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot submit for another employee",
         )
+
+    try:
+        await override_lock_service.ensure_not_locked(
+            session, Role(user.get("role", "EMPLOYEE"))
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
 
     missing = await monthly_submission_service.find_missing_late_reason_dates(
         session, emp_id=body.emp_id, year=body.year, month=body.month

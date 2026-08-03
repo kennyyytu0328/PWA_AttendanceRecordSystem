@@ -16,7 +16,7 @@ from app.schemas.attendance import (
     PunchResponse,
 )
 from app.schemas.bulk_override import BulkOverrideRequest
-from app.services import attendance_service
+from app.services import attendance_service, override_lock_service
 
 router = APIRouter(prefix="/api/attendance", tags=["attendance"])
 
@@ -236,6 +236,7 @@ async def bulk_override(
     """Bulk override attendance punches for a month."""
     target_emp_id = body.emp_id if body.emp_id else user["sub"]
     try:
+        await override_lock_service.ensure_not_locked(session, Role(user["role"]))
         result = await attendance_service.bulk_override_punches(
             session,
             emp_id=target_emp_id,

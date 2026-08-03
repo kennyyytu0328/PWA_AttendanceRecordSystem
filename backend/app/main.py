@@ -10,6 +10,7 @@ from app.routers import (
     monthly_submissions,
     nfc,
     org_hierarchy,
+    override_lock,
     reasons,
     reports,
     system_config,
@@ -62,6 +63,7 @@ app.include_router(monthly_submissions.router)
 app.include_router(nfc.router)
 app.include_router(org_hierarchy.ranks_router)
 app.include_router(org_hierarchy.scoping_router)
+app.include_router(override_lock.router)
 app.include_router(reasons.router)
 app.include_router(reports.router)
 app.include_router(system_config.router)
