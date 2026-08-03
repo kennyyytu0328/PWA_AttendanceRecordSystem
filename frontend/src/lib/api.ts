@@ -10,6 +10,9 @@ export class ApiError extends Error {
      * detail ({code, message}); undefined for plain-string errors. Lets the UI
      * localize the message instead of showing the raw English detail. */
     public readonly code?: string,
+    /** Raw structured detail payload when the backend includes
+     * machine-actionable data beyond code/message (e.g. { dates: [...] }). */
+    public readonly raw?: Record<string, unknown>,
   ) {
     super(detail);
     this.name = "ApiError";
@@ -42,20 +45,23 @@ async function request<T>(
   if (!response.ok) {
     let detail = "Request failed";
     let code: string | undefined;
+    let raw: Record<string, unknown> | undefined;
     try {
       const body = await response.json();
       // detail is usually a plain string, but some endpoints return a
-      // structured { code, message } so the UI can localize the message.
+      // structured { code, message, ... } so the UI can localize the message
+      // and act on any extra machine-readable fields (e.g. dates).
       if (body.detail && typeof body.detail === "object") {
         detail = body.detail.message ?? detail;
         code = body.detail.code;
+        raw = body.detail;
       } else {
         detail = body.detail ?? detail;
       }
     } catch {
       // ignore parse errors
     }
-    throw new ApiError(response.status, detail, code);
+    throw new ApiError(response.status, detail, code, raw);
   }
 
   const contentType = response.headers.get("content-type");

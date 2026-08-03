@@ -284,6 +284,13 @@ export default function MonthlyOverridePage() {
   const [warningOpen, setWarningOpen] = useState(false);
   const [overtimeModalOpen, setOvertimeModalOpen] = useState(false);
   const [lateReasonModalOpen, setLateReasonModalOpen] = useState(false);
+  // Dates the backend's 400 said are missing a reason. Live punches carry
+  // seconds while the local rule compares minute-truncated clockOut strings,
+  // so the backend can reject a submission the local rule missed. null falls
+  // back to the locally-computed lateReasonMissingDates.
+  const [backendLateReasonDates, setBackendLateReasonDates] = useState<
+    readonly string[] | null
+  >(null);
   const [pendingSubmit, setPendingSubmit] = useState(false);
 
   // Derived: unique departments & filtered employees
@@ -700,16 +707,28 @@ export default function MonthlyOverridePage() {
       setSubmissionStatus(status);
       setMessage({ type: "success", text: t("monthlyOverride.submitSuccess") });
     } catch (err) {
-      const text =
-        err instanceof ApiError && err.code
-          ? err.message
-          : t("monthlyOverride.submitError");
-      setMessage({ type: "error", text });
+      if (err instanceof ApiError && err.code === "late_reason_missing") {
+        // The backend rejected dates the local rule didn't catch (e.g. a
+        // seconds-precision clock-out the frontend's minute-truncated
+        // comparison missed). Surface the backend's own date list instead of
+        // a dead-end error string.
+        const backendDates = Array.isArray(err.raw?.dates)
+          ? (err.raw.dates as string[])
+          : lateReasonMissingDates;
+        setBackendLateReasonDates(backendDates);
+        setLateReasonModalOpen(true);
+      } else {
+        const text =
+          err instanceof ApiError && err.code
+            ? err.message
+            : t("monthlyOverride.submitError");
+        setMessage({ type: "error", text });
+      }
     } finally {
       setPendingSubmit(false);
       setWarningOpen(false);
     }
-  }, [targetEmpId, year, month, t]);
+  }, [targetEmpId, year, month, t, lateReasonMissingDates]);
 
   // Click handler for "本月送單" — opens warning modal if abnormal days exist
   const handleSubmitMonth = useCallback(() => {
@@ -718,6 +737,7 @@ export default function MonthlyOverridePage() {
       return;
     }
     if (lateReasonMissingDates.length > 0) {
+      setBackendLateReasonDates(null);
       setLateReasonModalOpen(true);
       return;
     }
@@ -1152,8 +1172,11 @@ export default function MonthlyOverridePage() {
       />
       <LateReasonMissingModal
         open={lateReasonModalOpen}
-        dates={lateReasonMissingDates}
-        onClose={() => setLateReasonModalOpen(false)}
+        dates={backendLateReasonDates ?? lateReasonMissingDates}
+        onClose={() => {
+          setLateReasonModalOpen(false);
+          setBackendLateReasonDates(null);
+        }}
       />
     </div>
   );

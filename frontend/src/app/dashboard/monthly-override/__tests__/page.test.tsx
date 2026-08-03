@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import MonthlyOverridePage from "@/app/dashboard/monthly-override/page";
+import { ApiError } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -45,13 +46,19 @@ const mockGet = vi.fn();
 const mockPut = vi.fn();
 const mockPost = vi.fn();
 
-vi.mock("@/lib/api", () => ({
-  apiClient: {
-    get: (...args: unknown[]) => mockGet(...args),
-    put: (...args: unknown[]) => mockPut(...args),
-    post: (...args: unknown[]) => mockPost(...args),
-  },
-}));
+// Keep the real ApiError class export (the page does `err instanceof
+// ApiError`) while overriding apiClient with test doubles.
+vi.mock("@/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api")>();
+  return {
+    ...actual,
+    apiClient: {
+      get: (...args: unknown[]) => mockGet(...args),
+      put: (...args: unknown[]) => mockPut(...args),
+      post: (...args: unknown[]) => mockPost(...args),
+    },
+  };
+});
 
 const mockListLeaveTypes = vi.fn();
 vi.mock("@/lib/api/leave-types", () => ({
@@ -475,6 +482,77 @@ describe("MonthlyOverridePage late-leave reason hard-block", () => {
       expect(mockSubmit).toHaveBeenCalledWith("EMP001", LR_YEAR, LR_MONTH);
     });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("opens the missing-reason modal from the backend's 400 dates when the local rule misses it (seconds-precision gap)", async () => {
+    // Clock-out carries seconds (":45") the frontend's extractTime() drops,
+    // so the minute-truncated clockOut ("18:00") equals shift end and the
+    // local rule finds nothing — but the backend compares at full precision
+    // and still rejects. The submit call must reach the API (no local block)
+    // and the 400's structured `dates` must drive the modal.
+    mockGet.mockImplementation((url: string) => {
+      if (url.startsWith("/api/config/workdays")) {
+        return Promise.resolve(buildLateReasonWorkdays());
+      }
+      if (url.startsWith("/api/attendance/summaries")) {
+        return Promise.resolve([
+          {
+            id: 1,
+            emp_id: "EMP001",
+            date: LR_DATE,
+            first_clock_in: `${LR_DATE}T09:00:00`,
+            last_clock_out: `${LR_DATE}T18:00:45`,
+            status: "NORMAL",
+            leave_type: null,
+            remark: null,
+            late_leave_reason: null,
+          },
+        ]);
+      }
+      if (url.startsWith("/api/employees")) {
+        return Promise.resolve([]);
+      }
+      if (url.startsWith("/api/auth/me")) {
+        return Promise.resolve({
+          emp_id: "EMP001",
+          role: "EMPLOYEE",
+          shift_start_time: "09:00",
+          shift_end_time: "18:00",
+        });
+      }
+      if (url.startsWith("/api/config/late-reason-leave-types")) {
+        return Promise.resolve({ leave_types: ["出差"] });
+      }
+      return Promise.reject(new Error(`unmocked get: ${url}`));
+    });
+    mockPut.mockResolvedValue({ emp_id: "EMP001", updated_count: 1, results: [] });
+    mockListLeaveTypes.mockResolvedValue({ leave_types: ["特休", "病假", "事假"] });
+    mockGetStatus.mockResolvedValue({ submitted: false, submitted_at: null });
+    mockSubmit.mockRejectedValue(
+      new ApiError(400, "延後下班原因未填寫完成，無法送單", "late_reason_missing", {
+        code: "late_reason_missing",
+        message: "延後下班原因未填寫完成，無法送單",
+        dates: [LR_DATE],
+      }),
+    );
+
+    await renderLateReasonPage();
+
+    const submitBtn = await screen.findByRole("button", {
+      name: /monthlyOverride\.submitMonth/,
+    });
+    await act(async () => {
+      fireEvent.click(submitBtn);
+    });
+
+    // Local gate let it through — the API was actually called.
+    await waitFor(() => {
+      expect(mockSubmit).toHaveBeenCalledWith("EMP001", LR_YEAR, LR_MONTH);
+    });
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent(LR_DATE);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
 
