@@ -7,12 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.monthly_submission import MonthlySubmission
 from app.repositories import (
+    attendance_repository,
     employee_repository,
     monthly_submission_repository,
     summary_repository,
     system_config_repository,
 )
-from app.services.reporting_service import _load_calendar_for_year
+from app.services.reporting_service import _load_calendar_for_year, generate_daily_summary
 from app.utils.taiwan_calendar import DayKind, classify_date_kind
 
 _REQUIRED_DAY_KINDS = frozenset({DayKind.WORKDAY, DayKind.MAKEUP_WORKDAY})
@@ -36,10 +37,31 @@ async def find_missing_late_reason_dates(
     )
     first = datetime.date(year, month, 1)
     last = datetime.date(year, month, _calendar.monthrange(year, month)[1])
+    calendar_data = await _load_calendar_for_year(session, year)
+
+    # Summaries are materialized lazily (report/page loads), so a workday whose
+    # month was never opened in the UI may have punches but no summary row.
+    # Regenerate summaries for every workday-kind date carrying a live punch
+    # before scanning — otherwise a direct API submission bypasses this gate.
+    month_start = datetime.datetime.combine(first, datetime.time.min)
+    month_end = datetime.datetime.combine(
+        last + datetime.timedelta(days=1), datetime.time.min
+    )
+    logs = await attendance_repository.find_by_date_range_and_emp_ids(
+        session, month_start, month_end, {emp_id}
+    )
+    punch_dates = {
+        log.timestamp.date() for log in logs if not log.is_overridden
+    }
+    for punch_date in sorted(punch_dates):
+        day_kind = classify_date_kind(calendar_data, punch_date)
+        if day_kind not in _REQUIRED_DAY_KINDS:
+            continue
+        await generate_daily_summary(session, emp_id, punch_date, day_kind=day_kind)
+
     summaries = await summary_repository.find_by_employee(
         session, emp_id, start_date=first, end_date=last
     )
-    calendar_data = await _load_calendar_for_year(session, year)
 
     missing: list[datetime.date] = []
     for s in summaries:
@@ -51,7 +73,11 @@ async def find_missing_late_reason_dates(
             continue
         if s.first_clock_in == s.last_clock_out:
             continue
-        if s.last_clock_out.time() <= employee.shift_end_time:
+        # Truncate to minute precision so the rule matches what the UI shows
+        # (frontend compares "HH:MM" strings): a 17:30:22 clock-out against a
+        # 17:30 shift end is on time, not "late without a reason".
+        clock_out = s.last_clock_out.time().replace(second=0, microsecond=0)
+        if clock_out <= employee.shift_end_time:
             continue
         if s.late_leave_reason:
             continue

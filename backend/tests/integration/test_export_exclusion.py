@@ -58,6 +58,36 @@ async def test_excluded_accounts_absent_from_csv_and_json(db_session):
 
 
 @pytest.mark.asyncio
+async def test_excluded_accounts_absent_from_xlsx(db_session):
+    import io
+
+    import openpyxl
+
+    await _seed_employee(db_session, "HR01", role=Role.HR)
+    await _seed_employee(db_session, "E951")
+    d = datetime.date(2026, 7, 22)
+    for eid in ("HR01", "E951"):
+        await summary_repository.upsert_summary(
+            db_session, emp_id=eid, date=d,
+            first_clock_in=datetime.datetime.combine(d, datetime.time(9, 0)),
+            last_clock_out=datetime.datetime.combine(d, datetime.time(18, 0)),
+            status=AttendanceStatus.NORMAL)
+
+    xlsx_out = await reporting_service.export_attendance(
+        db_session, start_date=d, end_date=d, format="xlsx",
+        submission_filter="all")
+    wb = openpyxl.load_workbook(io.BytesIO(xlsx_out))
+    cells = [
+        str(c.value)
+        for row in wb.active.iter_rows()
+        for c in row
+        if c.value is not None
+    ]
+    assert any("E951" in v for v in cells)
+    assert not any("HR01" in v for v in cells)
+
+
+@pytest.mark.asyncio
 async def test_exclusion_wins_even_with_explicit_emp_id(db_session):
     await _seed_employee(db_session, "ADMIN", role=Role.ADMIN)
     d = datetime.date(2026, 7, 22)

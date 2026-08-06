@@ -140,7 +140,7 @@ async def get_daily_report(
 
 @router.get("/export")
 async def export_report(
-    format: str = Query(..., description="Export format: csv, json, or xlsx"),
+    format: str = Query(..., description="Export format: csv, json, xlsx, or hrm"),
     start_date: datetime.date = Query(..., description="Start date (YYYY-MM-DD)"),
     end_date: datetime.date = Query(..., description="End date (YYYY-MM-DD)"),
     department: str | None = Query(default=None, description="Filter by department"),

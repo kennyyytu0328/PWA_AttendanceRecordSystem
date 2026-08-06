@@ -726,6 +726,16 @@ describe("MonthlyOverridePage month-end override lock", () => {
     ).toBeDisabled();
   });
 
+  it("still shows stored punch values as read-only text while locked", async () => {
+    await renderPage();
+
+    await screen.findByTestId("override-lock-banner");
+    // The 2026-05-01 fixture row (09:30 in / 18:00 out) must stay visible —
+    // the lock makes the page read-only, it must not blank the data.
+    expect(screen.getByText("09:30")).toBeInTheDocument();
+    expect(screen.getAllByText("18:00").length).toBeGreaterThan(0);
+  });
+
   it("does not lock the page for HR when override lock is on", async () => {
     mockUseAuth.mockReturnValue({
       user: { emp_id: "HR001", role: "HR" },

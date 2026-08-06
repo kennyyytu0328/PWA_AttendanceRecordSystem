@@ -196,6 +196,50 @@ describe("PunchPage late-leave reason dialog", () => {
     });
   });
 
+  it("does not open the modal on a weekday national holiday", async () => {
+    // 2026-07-22 declared a national holiday by the calendar: punching
+    // after shift end must NOT ask for a late reason — there is no shift
+    // on a non-working day (#31f), the punch submits directly.
+    mockGetByUrl({
+      authMe: { shift_end_time: "17:30" },
+      workdays: {
+        days: [
+          {
+            date: "2026-07-22",
+            weekday_zh: "三",
+            is_holiday: true,
+            description: "國定假日",
+            is_makeup_workday: false,
+            day_kind: "NATIONAL_HOLIDAY",
+          },
+        ],
+      },
+    });
+    vi.setSystemTime(new Date("2026-07-22T18:31:00")); // after 17:30
+
+    render(<PunchPage />);
+
+    // Wait for the calendar probe to overwrite the weekday-guess WORKDAY
+    // seed with the authoritative NATIONAL_HOLIDAY before clicking.
+    await waitFor(() =>
+      expect(mockGet).toHaveBeenCalledWith(
+        expect.stringContaining("/api/config/workdays"),
+      ),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /punch/i }));
+
+    await waitFor(() => expect(mockPost).toHaveBeenCalled());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(mockPost).toHaveBeenCalledWith(
+      "/api/attendance/punch",
+      expect.not.objectContaining({ late_leave_reason: expect.anything() }),
+    );
+  });
+
   it("does not open the modal before shift end", async () => {
     mockGetByUrl({ authMe: { shift_end_time: "17:30" } });
     vi.setSystemTime(new Date("2026-07-22T17:30:00")); // exactly on time

@@ -410,6 +410,9 @@ export default function MonthlyOverridePage() {
         //   REST_DAY (Sat)      → only HR+ can edit
         //   NATIONAL_HOLIDAY    → nobody can edit (unchanged from old behavior)
         //   WORKDAY / MAKEUP_WORKDAY → editable for everyone
+        // Day-kind editability only — the month-end lock is applied at render
+        // time (inputs swap to read-only text) so locked-out employees can
+        // still SEE their stored values during month-end settlement.
         let isEditable: boolean;
         if (dayKind === "REGULAR_LEAVE") {
           isEditable = false;
@@ -420,7 +423,6 @@ export default function MonthlyOverridePage() {
         } else {
           isEditable = true;
         }
-        isEditable = isEditable && !pageLocked;
         return {
           date: day.date,
           weekday_zh: day.weekday_zh,
@@ -451,7 +453,7 @@ export default function MonthlyOverridePage() {
     } finally {
       setIsLoading(false);
     }
-  }, [year, month, isHrPlus, selectedEmpId, pageLocked]);
+  }, [year, month, isHrPlus, selectedEmpId]);
 
   useEffect(() => {
     fetchData();
@@ -467,12 +469,16 @@ export default function MonthlyOverridePage() {
 
   // Shift end used by the late-leave reason rule: HR viewing another
   // employee uses that employee's shift; self uses the fetched profile.
+  // /api/auth/me sends "HH:MM" but /api/employees serializes "HH:MM:SS" —
+  // slice both to "HH:MM" so the string comparison against row.clockOut
+  // is exact rather than lexicographically accidental.
   const targetShiftEnd: string | null = (() => {
-    if (isHrPlus && selectedEmpId) {
-      const emp = employees.find((e) => e.emp_id === selectedEmpId);
-      return emp?.shift_end_time ?? null;
-    }
-    return profile?.shift_end_time ?? null;
+    const raw =
+      isHrPlus && selectedEmpId
+        ? (employees.find((e) => e.emp_id === selectedEmpId)?.shift_end_time ??
+          null)
+        : (profile?.shift_end_time ?? null);
+    return raw ? raw.slice(0, 5) : null;
   })();
 
   // Fetch leave types once on mount
@@ -1030,6 +1036,11 @@ export default function MonthlyOverridePage() {
               </thead>
               <tbody>
                 {rows.map((row) => {
+                  // Under the month-end lock a day-editable row swaps its
+                  // inputs for read-only text (values stay visible); rows
+                  // non-editable by day-kind keep showing "-" as before.
+                  const editableNow = row.isEditable && !pageLocked;
+                  const lockedReadOnly = row.isEditable && pageLocked;
                   const needsReason = rowNeedsLateLeaveReason(
                     row,
                     targetShiftEnd,
@@ -1049,7 +1060,7 @@ export default function MonthlyOverridePage() {
                       <DayTypeBadge day={row} t={t} />
                     </td>
                     <td className="px-4 py-3">
-                      {row.isEditable ? (
+                      {editableNow ? (
                         <input
                           type="text"
                           inputMode="numeric"
@@ -1067,12 +1078,14 @@ export default function MonthlyOverridePage() {
                               : "border-gray-300"
                           }`}
                         />
+                      ) : lockedReadOnly ? (
+                        <span className="text-gray-900">{row.clockIn || "-"}</span>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {row.isEditable ? (
+                      {editableNow ? (
                         <input
                           type="text"
                           inputMode="numeric"
@@ -1090,12 +1103,14 @@ export default function MonthlyOverridePage() {
                               : "border-gray-300"
                           }`}
                         />
+                      ) : lockedReadOnly ? (
+                        <span className="text-gray-900">{row.clockOut || "-"}</span>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {row.isEditable ? (
+                      {editableNow ? (
                         <div className="flex items-center gap-1.5">
                           <select
                             data-testid="late-reason-select"
@@ -1129,11 +1144,19 @@ export default function MonthlyOverridePage() {
                             </span>
                           )}
                         </div>
+                      ) : lockedReadOnly ? (
+                        <span className="text-gray-900">
+                          {row.lateLeaveReason === "ASSIGNED_OVERTIME"
+                            ? t("monthlyOverride.lateReasonAssignedOvertimeShort")
+                            : row.lateLeaveReason === "PERSONAL"
+                              ? t("monthlyOverride.lateReasonPersonalShort")
+                              : "-"}
+                        </span>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}
                     </td>
-                    {row.isEditable ? (
+                    {editableNow ? (
                       <td className="px-4 py-3" colSpan={2}>
                         <RemarkCell
                           leaveType={row.leaveType}
@@ -1147,6 +1170,19 @@ export default function MonthlyOverridePage() {
                           }
                         />
                       </td>
+                    ) : lockedReadOnly ? (
+                      <>
+                        <td className="px-4 py-3">
+                          <span className="text-gray-900">
+                            {row.leaveType || "-"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-gray-900">
+                            {row.remark || "-"}
+                          </span>
+                        </td>
+                      </>
                     ) : (
                       <>
                         <td className="px-4 py-3">
@@ -1158,7 +1194,7 @@ export default function MonthlyOverridePage() {
                       </>
                     )}
                     <td className="px-4 py-3">
-                      {row.isEditable ? (
+                      {editableNow ? (
                         <div className="flex items-center gap-1.5">
                           <select
                             data-testid="overtime-select"
@@ -1191,6 +1227,10 @@ export default function MonthlyOverridePage() {
                             </span>
                           )}
                         </div>
+                      ) : lockedReadOnly ? (
+                        <span className="text-gray-900">
+                          {row.overtimeHours != null ? row.overtimeHours : "-"}
+                        </span>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}

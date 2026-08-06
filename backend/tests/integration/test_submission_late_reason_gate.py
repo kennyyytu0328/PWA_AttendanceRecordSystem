@@ -14,6 +14,7 @@ from jose import jwt as jose_jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.models.attendance_log import AttendanceLog, WorkMode
 from app.models.employee import Employee, Role
 from app.models.daily_attendance_summary import AttendanceStatus
 from app.repositories import summary_repository
@@ -100,6 +101,54 @@ async def test_submit_ok_when_reason_filled_or_exempt(client: AsyncClient, db_se
         json={"emp_id": "E931", "year": 2026, "month": 7},
         headers={"Authorization": f"Bearer {token}"})
     assert res.status_code == 200, res.text
+
+
+@pytest.mark.asyncio
+async def test_same_minute_clockout_with_seconds_is_on_time(client: AsyncClient, db_session: AsyncSession):
+    """18:00:22 against an 18:00 shift end is on time — the gate must use
+    minute precision, matching the "HH:MM" comparison the frontend shows."""
+    await _seed_employee(db_session, "E933")
+    token = _make_token("E933", "EMPLOYEE")
+    d = datetime.date(2026, 7, 22)
+    await summary_repository.upsert_summary(
+        db_session, emp_id="E933", date=d,
+        first_clock_in=datetime.datetime.combine(d, datetime.time(9, 0)),
+        last_clock_out=datetime.datetime.combine(d, datetime.time(18, 0, 22)),
+        status=AttendanceStatus.NORMAL,
+    )
+    res = await client.post("/api/monthly-submissions",
+        json={"emp_id": "E933", "year": 2026, "month": 7},
+        headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 200, res.text
+
+
+@pytest.mark.asyncio
+async def test_gate_catches_punches_with_no_summary_row(client: AsyncClient, db_session: AsyncSession):
+    """Direct API submission for a month never opened in the UI: raw punch
+    logs exist but no summary was materialized. The gate must regenerate
+    summaries from the logs instead of scanning an empty table."""
+    await _seed_employee(db_session, "E934")
+    token = _make_token("E934", "EMPLOYEE")
+    d = datetime.date(2026, 7, 22)  # Wednesday workday
+    for t in (datetime.time(9, 0), datetime.time(19, 0)):
+        db_session.add(AttendanceLog(
+            emp_id="E934",
+            timestamp=datetime.datetime.combine(d, t),
+            latitude=25.0,
+            longitude=121.5,
+            accuracy=10.0,
+            ip_address="127.0.0.1",
+            work_mode=WorkMode.OFFICE,
+        ))
+    await db_session.commit()
+
+    res = await client.post("/api/monthly-submissions",
+        json={"emp_id": "E934", "year": 2026, "month": 7},
+        headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 400
+    detail = res.json()["detail"]
+    assert detail["code"] == "late_reason_missing"
+    assert "2026-07-22" in detail["dates"]
 
 
 @pytest.mark.asyncio

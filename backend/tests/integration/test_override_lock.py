@@ -93,6 +93,25 @@ async def test_lock_blocks_employee_but_not_hr(client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_lock_blocks_manager(client, db_session):
+    """MANAGER is the other locked role — only HR/ADMIN are exempt."""
+    await _seed_employee(db_session, "M940", role=Role.MANAGER)
+    await _seed_employee(db_session, "HRX", role=Role.HR)
+    await _set_lock(client, True)
+
+    mgr_token = _make_token("M940", "MANAGER")
+    res = await client.put("/api/attendance/override-bulk",
+        json={"year": 2026, "month": 5, "entries": [ENTRY]},
+        headers={"Authorization": f"Bearer {mgr_token}"})
+    assert res.status_code == 403
+
+    res = await client.post("/api/monthly-submissions",
+        json={"emp_id": "M940", "year": 2026, "month": 5},
+        headers={"Authorization": f"Bearer {mgr_token}"})
+    assert res.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_lock_read_any_auth_write_hr_only(client, db_session):
     await _seed_employee(db_session, "E941")
     emp_token = _make_token("E941", "EMPLOYEE")
