@@ -66,7 +66,7 @@ async def test_csv_export_uses_chinese_headers(db_session):
     assert header == [
         "員工編號", "姓名", "部門", "日期", "星期",
         "班別時間", "上班時間", "下班時間",
-        "狀態", "備註", "加班時數", "遲到理由", "送單狀態",
+        "狀態", "備註", "加班時數", "遲到理由", "延後下班原因", "送單狀態",
     ]
 
 
@@ -152,7 +152,8 @@ async def test_csv_export_translates_status_values(db_session):
     assert data_row[8] == "請假"          # 狀態
     assert data_row[9] == "特休·上午"     # 備註
     assert data_row[10] == ""            # 加班時數 — none
-    assert data_row[12] == "已送單"       # 送單狀態
+    assert data_row[12] == ""            # 延後下班原因 — none
+    assert data_row[13] == "已送單"       # 送單狀態
 
 
 async def test_csv_export_rest_day_work_annotated_in_remark(db_session):
@@ -216,6 +217,65 @@ async def test_csv_export_rest_day_work_annotated_in_remark(db_session):
     assert data_row[8] == "正常"           # 狀態 — rest-day work is NORMAL
     assert data_row[9] == "休息日加班"      # 備註
     assert data_row[10] == "3"            # 加班時數
+
+
+async def test_csv_export_localizes_late_leave_reason(db_session):
+    """延後下班原因 (late_leave_reason) exports as the localized A/B label —
+    same short labels the monthly-override read-only view uses."""
+    from app.models.attendance_log import AttendanceLog, WorkMode
+
+    await _seed_employee_with_shift(
+        db_session, emp_id="E_LLR", shift_start_time="09:00", shift_end_time="17:00"
+    )
+    db_session.add_all(
+        [
+            AttendanceLog(
+                emp_id="E_LLR",
+                timestamp=datetime.datetime(2026, 5, 14, 8, 55),
+                latitude=25.0, longitude=121.5, accuracy=10.0,
+                ip_address="127.0.0.1", work_mode=WorkMode.OFFICE,
+            ),
+            AttendanceLog(
+                emp_id="E_LLR",
+                timestamp=datetime.datetime(2026, 5, 14, 18, 30),
+                latitude=25.0, longitude=121.5, accuracy=10.0,
+                ip_address="127.0.0.1", work_mode=WorkMode.OFFICE,
+            ),
+        ]
+    )
+    await db_session.commit()
+    await summary_repository.upsert_summary(
+        db_session,
+        emp_id="E_LLR",
+        date=datetime.date(2026, 5, 14),
+        first_clock_in=datetime.datetime(2026, 5, 14, 8, 55),
+        last_clock_out=datetime.datetime(2026, 5, 14, 18, 30),
+        status=AttendanceStatus.NORMAL,
+        late_leave_reason="PERSONAL",
+    )
+    await monthly_submission_repository.upsert(
+        db_session, emp_id="E_LLR", year=2026, month=5
+    )
+
+    csv_text = await reporting_service.export_attendance(
+        db_session,
+        start_date=datetime.date(2026, 5, 14),
+        end_date=datetime.date(2026, 5, 14),
+        format="csv",
+    )
+    rows = list(csv.reader(io.StringIO(csv_text)))
+    data_row = rows[1]
+    assert data_row[12] == "B:因個人原因留在辦公室"  # 延後下班原因
+    assert data_row[13] == "已送單"                  # 送單狀態
+
+    # JSON keeps the raw enum value under the English key.
+    json_text = await reporting_service.export_attendance(
+        db_session,
+        start_date=datetime.date(2026, 5, 14),
+        end_date=datetime.date(2026, 5, 14),
+        format="json",
+    )
+    assert '"late_leave_reason": "PERSONAL"' in json_text
 
 
 async def test_csv_export_default_excludes_unsubmitted(db_session):
@@ -288,6 +348,7 @@ async def test_json_export_keeps_english(db_session):
     assert '"status": "NORMAL"' in json_text
     assert '"shift_time"' in json_text
     assert '"remark"' in json_text
+    assert '"late_leave_reason"' in json_text
     assert '"submission_status"' in json_text
 
 

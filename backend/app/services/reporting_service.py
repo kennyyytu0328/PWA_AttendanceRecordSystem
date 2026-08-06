@@ -46,8 +46,15 @@ _NON_WORKING_DAY_KINDS = frozenset(
 CHINESE_HEADERS = [
     "員工編號", "姓名", "部門", "日期", "星期",
     "班別時間", "上班時間", "下班時間",
-    "狀態", "備註", "加班時數", "遲到理由", "送單狀態",
+    "狀態", "備註", "加班時數", "遲到理由", "延後下班原因", "送單狀態",
 ]
+
+# late_leave_reason enum → 延後下班原因 export label. Mirrors the short labels
+# the monthly-override read-only view shows (lateReason*Short i18n keys).
+LATE_LEAVE_REASON_ZH = {
+    "ASSIGNED_OVERTIME": "A:主管指派加班",
+    "PERSONAL": "B:因個人原因留在辦公室",
+}
 
 STATUS_ZH = {
     "NORMAL": "正常",
@@ -534,7 +541,7 @@ async def export_attendance(
 
     Columns (CSV/Excel):
         員工編號, 姓名, 部門, 日期, 星期, 班別時間, 上班時間, 下班時間,
-        狀態, 備註, 加班時數, 遲到理由, 送單狀態
+        狀態, 備註, 加班時數, 遲到理由, 延後下班原因, 送單狀態
 
     Parameters
     ----------
@@ -669,6 +676,7 @@ async def export_attendance(
             ),
             "overtime_hours": _format_overtime_hours(s.overtime_hours),
             "reason": reason_map.get(s.id or -1, ""),
+            "late_leave_reason": s.late_leave_reason or "",
             "submission_status": "submitted" if sub else "unsubmitted",
         })
 
@@ -750,6 +758,7 @@ async def export_attendance(
                     "remark": filler_remark,
                     "overtime_hours": "",
                     "reason": "",
+                    "late_leave_reason": "",
                     "submission_status": "submitted" if sub else "unsubmitted",
                 })
 
@@ -777,6 +786,9 @@ async def export_attendance(
             row["remark"],
             row.get("overtime_hours", ""),
             row["reason"],
+            LATE_LEAVE_REASON_ZH.get(
+                row["late_leave_reason"], row["late_leave_reason"]
+            ),
             "已送單" if row["submission_status"] == "submitted" else "未送單",
         ])
 
