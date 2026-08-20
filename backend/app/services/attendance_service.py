@@ -19,6 +19,7 @@ from app.repositories import (
     system_config_repository,
 )
 from app.services import geolocation_service, reporting_service
+from app.services.reason_service import REASON_ELIGIBLE_STATUSES
 from app.services.permission_service import APPROVE_OVERRIDE, has_permission
 from app.utils.taiwan_calendar import (
     DayInfo,
@@ -165,8 +166,15 @@ async def punch(
             late_leave_reason=late_leave_reason,
         )
     if tardiness_status in (AttendanceStatus.LATE, AttendanceStatus.EARLY_LEAVE):
-        if summary is not None:
+        # Only prompt for a reason when the persisted summary would actually
+        # accept one. _check_tardiness judges by wall clock alone, so a day
+        # with a registered 假別 (status LEAVE) or a pre-filled clock-out at/
+        # after shift end (status NORMAL) would otherwise prompt for a reason
+        # that reason_service.submit_reason is guaranteed to reject.
+        if summary is not None and summary.status in REASON_ELIGIBLE_STATUSES:
             summary_id = summary.id
+        else:
+            tardiness_status = None
 
     return PunchResult(
         log=saved_log,

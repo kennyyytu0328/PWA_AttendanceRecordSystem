@@ -8,6 +8,17 @@ from app.models.attendance_reason import AttendanceReason
 from app.models.daily_attendance_summary import AttendanceStatus
 from app.repositories import reason_repository, summary_repository
 
+# Summary statuses that accept a reason submission. attendance_service.punch
+# uses the same set to decide whether to prompt for a reason at punch time —
+# the prompt must never appear for a status this gate would reject.
+REASON_ELIGIBLE_STATUSES = frozenset(
+    {
+        AttendanceStatus.LATE,
+        AttendanceStatus.EARLY_LEAVE,
+        AttendanceStatus.LATE_AND_EARLY_LEAVE,
+    }
+)
+
 
 async def submit_reason(
     session: AsyncSession,
@@ -30,8 +41,7 @@ async def submit_reason(
     if summary.emp_id != emp_id:
         raise ValueError("Summary does not belong to this employee")
 
-    allowed = (AttendanceStatus.LATE, AttendanceStatus.EARLY_LEAVE, AttendanceStatus.LATE_AND_EARLY_LEAVE)
-    if summary.status not in allowed:
+    if summary.status not in REASON_ELIGIBLE_STATUSES:
         raise ValueError("Reason can only be submitted for LATE or EARLY_LEAVE status")
 
     existing = await reason_repository.find_by_summary_id(session, summary_id)
